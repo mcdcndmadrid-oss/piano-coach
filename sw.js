@@ -1,4 +1,4 @@
-const CACHE_NAME = 'piano-coach-mvp-v7';
+const CACHE_NAME = 'piano-coach-mvp-v9';
 const APP_ASSETS = [
   './',
   './index.html',

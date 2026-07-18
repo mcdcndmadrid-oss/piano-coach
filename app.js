@@ -36,6 +36,8 @@ const state = {
   mode: 'continuous',
   sessionKind: null,
   playing: false,
+  wakeLock: null,
+  wakeLockRequest: null,
   micReady: false,
   showHints: true,
   keyboardSize: 37,
@@ -153,7 +155,9 @@ function bindEvents() {
   els.pieceFileInput.addEventListener('change', importPieceFile);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && state.sessionKind && state.playing) toggleStagePause();
+    if (!document.hidden && (state.sessionKind || state.calibration.active)) requestScreenWakeLock();
   });
+  window.addEventListener('pagehide', releaseScreenWakeLock);
 }
 
 async function loadBuiltInPiece(id, announce) {
@@ -370,6 +374,7 @@ async function startCalibration() {
   }
 
   state.calibration.active = true;
+  await requestScreenWakeLock();
   state.calibration.step = 0;
   state.calibration.readings = [];
   state.calibration.awaitingRelease = false;
@@ -399,6 +404,7 @@ function cancelCalibration() {
   els.calibrateButton.disabled = false;
   updateCalibrationButton();
   updateKeyboardHighlights();
+  releaseScreenWakeLock();
   if (wasActive) showToast('Calibración cancelada.');
 }
 
@@ -415,6 +421,7 @@ function resetCalibration() {
   updateCalibrationButton();
   updateKeyboardHighlights();
   updateDynamicUI();
+  releaseScreenWakeLock();
   showToast('Calibración restablecida. Se usa la afinación detectada sin desplazamiento.');
 }
 
@@ -466,6 +473,7 @@ function finishCalibration() {
   updateCalibrationUI();
   updateKeyboardHighlights();
   updateDynamicUI();
+  releaseScreenWakeLock();
   showToast(`Calibración guardada: ${formatPitchOffset(state.pitchOffset)}.`);
 }
 
@@ -527,6 +535,7 @@ async function startPractice() {
   if (state.calibration.active) cancelCalibration();
   prepareSession('practice');
   state.playing = true;
+  await requestScreenWakeLock();
   await enterLandscapeMode();
   if (!state.micReady) showToast('La práctica avanzará, pero debes activar el micrófono para validar notas.');
   startLoop();
@@ -544,6 +553,7 @@ async function startPreview() {
   }
   prepareSession('preview');
   state.playing = true;
+  await requestScreenWakeLock();
   await enterLandscapeMode();
   triggerPreviewNotes(-0.01, 0.01);
   startLoop();
@@ -587,6 +597,7 @@ function stopSession() {
   stopSynthVoices();
   if (wasPractice && state.mode === 'continuous') evaluateMissedNotes();
   state.sessionKind = null;
+  releaseScreenWakeLock();
   document.body.classList.remove('session-active');
   exitFullscreenIfNeeded();
   requestAnimationFrame(() => {
@@ -610,9 +621,49 @@ function resetSession() {
   state.detectedFrequency = null;
   state.detectedConfidence = 0;
   stopSynthVoices();
+  releaseScreenWakeLock();
   document.body.classList.remove('session-active');
   updateAllUI();
   drawScore();
+}
+
+async function requestScreenWakeLock() {
+  if (!('wakeLock' in navigator)) return false;
+  if (document.visibilityState !== 'visible') return false;
+  if (!state.sessionKind && !state.calibration.active) return false;
+  if (state.wakeLock) return true;
+  if (state.wakeLockRequest) return state.wakeLockRequest;
+
+  state.wakeLockRequest = navigator.wakeLock.request('screen')
+    .then(async (wakeLock) => {
+      if (!state.sessionKind && !state.calibration.active) {
+        try { await wakeLock.release(); } catch (_) { /* ya liberado */ }
+        return false;
+      }
+
+      state.wakeLock = wakeLock;
+      wakeLock.addEventListener('release', () => {
+        if (state.wakeLock === wakeLock) state.wakeLock = null;
+      }, { once: true });
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => {
+      state.wakeLockRequest = null;
+    });
+
+  return state.wakeLockRequest;
+}
+
+async function releaseScreenWakeLock() {
+  const wakeLock = state.wakeLock;
+  state.wakeLock = null;
+  if (!wakeLock) return;
+  try {
+    await wakeLock.release();
+  } catch (_) {
+    // Puede haberse liberado automáticamente al ocultar la página.
+  }
 }
 
 async function enterLandscapeMode() {
@@ -859,6 +910,7 @@ function finishSession() {
   stopSynthVoices();
   if (completedKind === 'practice' && state.mode === 'continuous') evaluateMissedNotes();
   state.sessionKind = null;
+  releaseScreenWakeLock();
   document.body.classList.remove('session-active');
   exitFullscreenIfNeeded();
   requestAnimationFrame(() => {
