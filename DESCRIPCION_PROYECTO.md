@@ -20,6 +20,7 @@ El proyecto está desarrollado con **HTML, CSS y JavaScript puro**. No requiere 
 - Captura y análisis local del micrófono.
 - Detección monofónica mediante una implementación del algoritmo YIN.
 - Mensajes específicos para diagnosticar errores de permiso del micrófono.
+- Calibración guiada de octava mediante Do, Mi y Sol, con ajuste guardado en el dispositivo.
 - Modo de interpretación continua.
 - Modo que espera hasta detectar la nota correcta.
 - Previsualización sonora de la pieza mediante síntesis Web Audio.
@@ -74,6 +75,13 @@ El botón **Escuchar** inicia un modo independiente de previsualización:
 - El micrófono no se utiliza para validar la previsualización.
 
 Se recomienda usar auriculares si el micrófono está activo, especialmente antes de comenzar una práctica, para evitar que el sonido de los altavoces genere detecciones accidentales.
+
+
+## Calibración de octava
+
+Si el detector identifica las notas una octava por encima o por debajo, pulsa **Calibrar** y toca en orden las tres teclas que la aplicación marca: Do, Mi y Sol de la misma octava. Debes soltar cada tecla antes de tocar la siguiente.
+
+La aplicación compara las tres lecturas, calcula un desplazamiento global de hasta dos octavas y lo guarda en el almacenamiento local del dispositivo. El botón de calibración muestra el ajuste activo. La opción **Restablecer** vuelve a cero semitonos.
 
 ## Reconocimiento mediante micrófono
 

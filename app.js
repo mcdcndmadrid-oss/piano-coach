@@ -23,6 +23,11 @@ const BUILT_IN_PIECES = {
   demo: './pieces/demo.json',
   twinkle: './pieces/twinkle.json'
 };
+const CALIBRATION_STEPS = [
+  { midi: 60, label: 'Do4', instruction: 'Toca y mantén el Do central marcado en el teclado de la app.' },
+  { midi: 64, label: 'Mi4', instruction: 'Toca el Mi marcado, en la misma octava que el Do anterior.' },
+  { midi: 67, label: 'Sol4', instruction: 'Toca el Sol marcado, en la misma octava.' }
+];
 
 const state = {
   piece: null,
@@ -34,6 +39,15 @@ const state = {
   micReady: false,
   showHints: true,
   keyboardSize: 37,
+  pitchOffset: 0,
+  rawDetectedMidi: null,
+  calibration: {
+    active: false,
+    step: 0,
+    readings: [],
+    awaitingRelease: false,
+    completed: false
+  },
   audioContext: null,
   analyser: null,
   source: null,
@@ -87,9 +101,11 @@ async function init() {
 function cacheElements() {
   const ids = [
     'pieceTitle', 'pieceMeta', 'pieceSelect', 'micButton', 'playButton', 'previewButton',
-    'resetButton', 'modeSelect', 'tempoInput', 'tempoValue', 'keyboardSizeSelect',
+    'resetButton', 'calibrateButton', 'modeSelect', 'tempoInput', 'tempoValue', 'keyboardSizeSelect',
     'hintsToggle', 'pieceFileInput', 'micHelp', 'micHelpTitle', 'micHelpText',
-    'retryMicButton', 'stagePauseButton', 'stageStopButton', 'stagePieceTitle',
+    'retryMicButton', 'calibrationPanel', 'calibrationTitle', 'calibrationText',
+    'calibrationStatus', 'calibrationProgressBar', 'cancelCalibrationButton',
+    'resetCalibrationButton', 'stagePauseButton', 'stageStopButton', 'stagePieceTitle',
     'transportStatus', 'setupTransportStatus', 'stageExpectedNote', 'stageDetectedNote',
     'stageProgressBar', 'scoreCanvas', 'expectedNote', 'detectedNote', 'frequencyValue',
     'confidenceValue', 'correctValue', 'errorValue', 'keyboardViewport', 'keyboard',
@@ -106,6 +122,9 @@ function bindEvents() {
   els.stagePauseButton.addEventListener('click', toggleStagePause);
   els.stageStopButton.addEventListener('click', stopSession);
   els.resetButton.addEventListener('click', resetSession);
+  els.calibrateButton.addEventListener('click', startCalibration);
+  els.cancelCalibrationButton.addEventListener('click', cancelCalibration);
+  els.resetCalibrationButton.addEventListener('click', resetCalibration);
   els.pieceSelect.addEventListener('change', async () => {
     state.selectedPieceId = els.pieceSelect.value;
     await loadBuiltInPiece(state.selectedPieceId, true);
@@ -321,8 +340,10 @@ function disableMicrophone() {
   state.audioBuffer = null;
   state.micReady = false;
   state.detectedMidi = null;
+  state.rawDetectedMidi = null;
   state.detectedFrequency = null;
   state.detectedConfidence = 0;
+  if (state.calibration.active) cancelCalibration();
   els.micButton.textContent = 'Activar micrófono';
   els.micButton.classList.remove('is-active');
   els.microphoneHint.textContent = 'Activa el micrófono para validar notas.';
@@ -339,8 +360,171 @@ function hideMicHelp() {
   els.micHelp.hidden = true;
 }
 
+
+async function startCalibration() {
+  if (state.sessionKind) stopSession();
+
+  if (!state.micReady) {
+    await enableMicrophone();
+    if (!state.micReady) return;
+  }
+
+  state.calibration.active = true;
+  state.calibration.step = 0;
+  state.calibration.readings = [];
+  state.calibration.awaitingRelease = false;
+  state.calibration.completed = false;
+  state.rawDetectedMidi = null;
+  state.detectedMidi = null;
+  state.stableMidi = null;
+  state.stableCount = 0;
+  state.lastAcceptedAt = 0;
+  els.calibrationPanel.hidden = false;
+  els.calibrateButton.disabled = true;
+  updateCalibrationUI();
+  updateKeyboardHighlights();
+  showToast('Calibración iniciada. Toca las tres teclas marcadas en orden.');
+  startLoop();
+}
+
+function cancelCalibration() {
+  const wasActive = state.calibration.active;
+  state.calibration.active = false;
+  state.calibration.awaitingRelease = false;
+  state.calibration.step = 0;
+  state.calibration.readings = [];
+  state.stableMidi = null;
+  state.stableCount = 0;
+  els.calibrationPanel.hidden = true;
+  els.calibrateButton.disabled = false;
+  updateCalibrationButton();
+  updateKeyboardHighlights();
+  if (wasActive) showToast('Calibración cancelada.');
+}
+
+function resetCalibration() {
+  state.pitchOffset = 0;
+  state.calibration.active = false;
+  state.calibration.awaitingRelease = false;
+  state.calibration.completed = false;
+  state.calibration.step = 0;
+  state.calibration.readings = [];
+  saveSettings();
+  els.calibrationPanel.hidden = true;
+  els.calibrateButton.disabled = false;
+  updateCalibrationButton();
+  updateKeyboardHighlights();
+  updateDynamicUI();
+  showToast('Calibración restablecida. Se usa la afinación detectada sin desplazamiento.');
+}
+
+function captureCalibrationNote(rawMidi, timestamp) {
+  if (!state.calibration.active || state.calibration.awaitingRelease) return;
+
+  const target = CALIBRATION_STEPS[state.calibration.step];
+  if (!target) return;
+
+  state.calibration.readings.push({ targetMidi: target.midi, detectedMidi: rawMidi });
+  state.calibration.step += 1;
+  state.calibration.awaitingRelease = true;
+  state.lastAcceptedAt = timestamp;
+  state.stableMidi = null;
+  state.stableCount = 0;
+  flashKey(target.midi, 'detected');
+
+  if (state.calibration.step >= CALIBRATION_STEPS.length) finishCalibration();
+  else updateCalibrationUI();
+}
+
+function finishCalibration() {
+  const deltas = state.calibration.readings
+    .map((reading) => reading.targetMidi - reading.detectedMidi)
+    .sort((a, b) => a - b);
+  const middle = Math.floor(deltas.length / 2);
+  const medianDelta = deltas.length % 2 ? deltas[middle] : (deltas[middle - 1] + deltas[middle]) / 2;
+  const proposedOffset = clamp(Math.round(medianDelta), -24, 24);
+  const largestResidual = Math.max(...deltas.map((delta) => Math.abs(delta - proposedOffset)));
+
+  if (largestResidual > 1) {
+    state.calibration.step = 0;
+    state.calibration.readings = [];
+    state.calibration.awaitingRelease = true;
+    state.calibration.completed = false;
+    updateCalibrationUI();
+    updateKeyboardHighlights();
+    showToast('Las lecturas no fueron consistentes. Suelta la tecla y repite las tres notas.');
+    return;
+  }
+
+  state.pitchOffset = proposedOffset;
+  state.calibration.active = false;
+  state.calibration.awaitingRelease = false;
+  state.calibration.completed = true;
+  saveSettings();
+  els.calibrateButton.disabled = false;
+  updateCalibrationButton();
+  updateCalibrationUI();
+  updateKeyboardHighlights();
+  updateDynamicUI();
+  showToast(`Calibración guardada: ${formatPitchOffset(state.pitchOffset)}.`);
+}
+
+function updateCalibrationUI() {
+  if (!els.calibrationPanel) return;
+
+  if (state.calibration.completed && !state.calibration.active) {
+    els.calibrationTitle.textContent = 'Calibración completada';
+    els.calibrationText.textContent = `La app aplicará ${formatPitchOffset(state.pitchOffset)} a las notas detectadas.`;
+    els.calibrationStatus.textContent = `Ajuste actual: ${formatPitchOffset(state.pitchOffset)}`;
+    els.calibrationProgressBar.style.width = '100%';
+    els.cancelCalibrationButton.textContent = 'Cerrar';
+    els.resetCalibrationButton.disabled = false;
+    return;
+  }
+
+  const step = CALIBRATION_STEPS[state.calibration.step] || CALIBRATION_STEPS[0];
+  const completedSteps = state.calibration.readings.length;
+  els.calibrationTitle.textContent = `Paso ${Math.min(state.calibration.step + 1, CALIBRATION_STEPS.length)} de ${CALIBRATION_STEPS.length} · ${step.label}`;
+  els.calibrationText.textContent = state.calibration.awaitingRelease
+    ? `Suelta la tecla. Después: ${step.instruction}`
+    : step.instruction;
+  els.calibrationStatus.textContent = state.rawDetectedMidi === null
+    ? 'Esperando una nota estable…'
+    : `Lectura del micrófono: ${midiToNoteName(state.rawDetectedMidi)}`;
+  els.calibrationProgressBar.style.width = `${completedSteps / CALIBRATION_STEPS.length * 100}%`;
+  els.cancelCalibrationButton.textContent = 'Cancelar';
+  els.resetCalibrationButton.disabled = true;
+}
+
+function updateCalibrationButton() {
+  if (!els.calibrateButton) return;
+  els.calibrateButton.textContent = state.pitchOffset === 0
+    ? '🎹 Calibrar'
+    : `🎹 Calibrar (${formatPitchOffsetShort(state.pitchOffset)})`;
+}
+
+function formatPitchOffset(offset) {
+  if (offset === 0) return '0 semitonos';
+  const sign = offset > 0 ? '+' : '−';
+  const absolute = Math.abs(offset);
+  if (absolute % 12 === 0) {
+    const octaves = absolute / 12;
+    return `${sign}${absolute} semitonos (${sign}${octaves} ${octaves === 1 ? 'octava' : 'octavas'})`;
+  }
+  return `${sign}${absolute} ${absolute === 1 ? 'semitono' : 'semitonos'}`;
+}
+
+function formatPitchOffsetShort(offset) {
+  if (offset === 0) return 'sin ajuste';
+  const sign = offset > 0 ? '+' : '−';
+  const absolute = Math.abs(offset);
+  if (absolute % 12 === 0) return `${sign}${absolute / 12} oct.`;
+  return `${sign}${absolute} st`;
+}
+
 async function startPractice() {
   if (!state.piece) return;
+  if (state.calibration.active) cancelCalibration();
   prepareSession('practice');
   state.playing = true;
   await enterLandscapeMode();
@@ -351,6 +535,7 @@ async function startPractice() {
 
 async function startPreview() {
   if (!state.piece) return;
+  if (state.calibration.active) cancelCalibration();
   try {
     await getAudioContext();
   } catch (_) {
@@ -567,10 +752,16 @@ function analyzeMicrophone(timestamp) {
 
   if (rms < 0.012) {
     state.detectedMidi = null;
+    state.rawDetectedMidi = null;
     state.detectedFrequency = null;
     state.detectedConfidence = 0;
     state.stableMidi = null;
     state.stableCount = 0;
+    if (state.calibration.active && state.calibration.awaitingRelease) {
+      state.calibration.awaitingRelease = false;
+      updateCalibrationUI();
+      updateKeyboardHighlights();
+    }
     updateDynamicUI();
     return;
   }
@@ -578,21 +769,26 @@ function analyzeMicrophone(timestamp) {
   const result = yinPitch(state.audioBuffer, state.audioContext.sampleRate, 0.13);
   if (!result || result.frequency < 27 || result.frequency > 4300) return;
 
-  const midi = Math.round(frequencyToMidi(result.frequency));
-  if (midi < 21 || midi > 108) return;
+  const rawMidi = Math.round(frequencyToMidi(result.frequency));
+  if (rawMidi < 21 || rawMidi > 108) return;
+  const adjustedMidi = rawMidi + state.pitchOffset;
 
-  state.detectedMidi = midi;
+  state.rawDetectedMidi = rawMidi;
+  state.detectedMidi = adjustedMidi >= 21 && adjustedMidi <= 108 ? adjustedMidi : null;
   state.detectedFrequency = result.frequency;
   state.detectedConfidence = result.confidence;
 
-  if (state.stableMidi === midi) state.stableCount += 1;
+  if (state.stableMidi === rawMidi) state.stableCount += 1;
   else {
-    state.stableMidi = midi;
+    state.stableMidi = rawMidi;
     state.stableCount = 1;
   }
 
+  if (state.calibration.active) updateCalibrationUI();
+
   if (state.stableCount >= 3 && result.confidence >= 0.72 && timestamp - state.lastAcceptedAt > 180) {
-    acceptDetectedNote(midi, timestamp);
+    if (state.calibration.active) captureCalibrationNote(rawMidi, timestamp);
+    else if (state.detectedMidi !== null) acceptDetectedNote(state.detectedMidi, timestamp);
   }
   updateDynamicUI();
 }
@@ -606,7 +802,7 @@ function acceptDetectedNote(midi, timestamp) {
   if (midi === expected.midi) {
     if (state.noteResults[expectedIndex] !== 'correct') state.noteResults[expectedIndex] = 'correct';
     state.lastAcceptedAt = timestamp;
-    flashKey(midi, 'detected');
+    flashKey(expected.midi, 'detected');
 
     if (state.mode === 'wait') {
       state.currentIndex += 1;
@@ -684,6 +880,7 @@ function updateAllUI() {
   els.keyboardSizeSelect.value = String(state.keyboardSize);
   els.hintsToggle.checked = state.showHints;
   if (BUILT_IN_PIECES[state.selectedPieceId]) els.pieceSelect.value = state.selectedPieceId;
+  updateCalibrationButton();
   updateTransportUI();
   updateDynamicUI();
   updateProgressUI();
@@ -807,10 +1004,19 @@ function renderKeyboard() {
 }
 
 function updateKeyboardHighlights() {
-  els.keyboard.querySelectorAll('.piano-key.expected, .piano-key.preview-current').forEach((key) => {
-    key.classList.remove('expected', 'preview-current');
+  els.keyboard.querySelectorAll('.piano-key.expected, .piano-key.preview-current, .piano-key.calibration-target').forEach((key) => {
+    key.classList.remove('expected', 'preview-current', 'calibration-target');
   });
   if (!state.piece) return;
+
+  if (state.calibration.active) {
+    const target = CALIBRATION_STEPS[state.calibration.step];
+    if (target) {
+      const calibrationKey = els.keyboard.querySelector(`[data-midi="${target.midi}"]`);
+      if (calibrationKey) calibrationKey.classList.add('calibration-target');
+    }
+    return;
+  }
 
   let midi = null;
   let className = 'expected';
@@ -1033,6 +1239,7 @@ function saveSettings() {
     mode: state.mode,
     keyboardSize: state.keyboardSize,
     showHints: state.showHints,
+    pitchOffset: state.pitchOffset,
     selectedPieceId: BUILT_IN_PIECES[state.selectedPieceId] ? state.selectedPieceId : 'demo'
   }));
 }
@@ -1043,6 +1250,7 @@ function restoreSettings() {
     if (saved.mode === 'continuous' || saved.mode === 'wait') state.mode = saved.mode;
     if (KEYBOARD_RANGES[saved.keyboardSize]) state.keyboardSize = Number(saved.keyboardSize);
     if (typeof saved.showHints === 'boolean') state.showHints = saved.showHints;
+    if (Number.isInteger(saved.pitchOffset) && saved.pitchOffset >= -24 && saved.pitchOffset <= 24) state.pitchOffset = saved.pitchOffset;
     if (BUILT_IN_PIECES[saved.selectedPieceId]) state.selectedPieceId = saved.selectedPieceId;
   } catch (_) {
     // Se conservan los valores por defecto si el almacenamiento está dañado.

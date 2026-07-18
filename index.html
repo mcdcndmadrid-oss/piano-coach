@@ -80,6 +80,7 @@
         <input id="pieceFileInput" type="file" accept="application/json,.json" />
       </label>
 
+      <button id="calibrateButton" class="button button-ghost" type="button">🎹 Calibrar</button>
       <button id="resetButton" class="button button-ghost" type="button">↺ Reiniciar</button>
     </section>
 
@@ -89,6 +90,23 @@
         <p id="micHelpText"></p>
       </div>
       <button id="retryMicButton" class="button" type="button">Reintentar</button>
+    </section>
+
+
+    <section id="calibrationPanel" class="panel calibration-panel setup-only" hidden aria-live="polite">
+      <div class="calibration-copy">
+        <p class="eyebrow">Calibración de octava</p>
+        <strong id="calibrationTitle">Paso 1 de 3 · Do4</strong>
+        <p id="calibrationText">Toca y mantén la tecla marcada en el teclado de la app.</p>
+        <div class="calibration-progress" aria-label="Progreso de calibración"><div id="calibrationProgressBar"></div></div>
+      </div>
+      <div class="calibration-actions">
+        <span id="calibrationStatus">Esperando una nota estable…</span>
+        <div>
+          <button id="resetCalibrationButton" class="button button-ghost" type="button">Restablecer</button>
+          <button id="cancelCalibrationButton" class="button" type="button">Cancelar</button>
+        </div>
+      </div>
     </section>
 
     <section id="practiceStage" class="practice-stage" aria-label="Área de práctica">

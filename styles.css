@@ -38,7 +38,7 @@ h2 { font-size: 1.08rem; }
 .muted { color: var(--muted); }
 .panel { margin-bottom: 10px; border: 1px solid var(--line); border-radius: 15px; background: linear-gradient(180deg, rgba(21,35,59,.96), rgba(12,23,41,.98)); box-shadow: var(--shadow); }
 
-.controls { display: grid; grid-template-columns: 1.1fr 1.25fr 1.15fr 1.4fr .9fr .9fr .95fr auto; gap: 9px; align-items: end; padding: 11px; }
+.controls { display: grid; grid-template-columns: 1.05fr 1.2fr 1.05fr 1.3fr .82fr .78fr .88fr .82fr auto; gap: 9px; align-items: end; padding: 11px; }
 .control-group { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: .77rem; }
 .compact-actions { grid-template-columns: 1fr 1fr; align-self: stretch; }
 select, input[type="range"] { width: 100%; }
@@ -53,6 +53,16 @@ select { min-height: 39px; border: 1px solid var(--line); border-radius: 10px; p
 .mic-help { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border-color: rgba(255,202,92,.5); }
 .mic-help[hidden] { display: none; }
 .mic-help p { margin-top: 4px; color: var(--muted); font-size: .82rem; line-height: 1.4; }
+
+.calibration-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 13px 14px; border-color: rgba(124, 156, 255, .48); }
+.calibration-panel[hidden] { display: none; }
+.calibration-copy { display: grid; gap: 5px; min-width: 0; }
+.calibration-copy > strong { font-size: 1rem; }
+.calibration-copy > p:not(.eyebrow) { color: var(--muted); font-size: .82rem; line-height: 1.4; }
+.calibration-actions { display: grid; justify-items: end; gap: 8px; color: var(--muted); font-size: .76rem; text-align: right; }
+.calibration-actions > div { display: flex; gap: 7px; }
+.calibration-progress { width: min(440px, 100%); height: 7px; overflow: hidden; border-radius: 999px; background: #06101e; }
+.calibration-progress > div { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#6d8cff,#4dd7a2); transition: width 160ms ease; }
 
 .practice-stage { display: grid; grid-template-rows: auto auto; gap: 0; }
 .stage-bar { display: none; }
@@ -120,6 +130,8 @@ body.session-active .key-label { bottom: 3px; }
   .controls { grid-template-columns: repeat(4,minmax(0,1fr)); }
 }
 @media (max-width: 760px) and (orientation: landscape) {
+  .calibration-panel { grid-template-columns: 1fr; gap: 8px; }
+  .calibration-actions { justify-items: start; text-align: left; }
   .app-shell { width: calc(100% - 10px); }
   .topbar { padding-bottom: 9px; }
   .controls { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; padding: 7px; }
@@ -197,6 +209,19 @@ body.session-active .key-label { bottom: 3px; }
 }
 .piano-key.preview-current.black {
   background: linear-gradient(180deg, #aec0ff, #3e5bc0);
+}
+.piano-key.calibration-target.white {
+  background: linear-gradient(180deg, #fff1bd, #ffc84e);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .9), 0 0 18px rgba(255, 200, 78, .55);
+}
+.piano-key.calibration-target.black {
+  background: linear-gradient(180deg, #ffe08a, #ad7200);
+  box-shadow: 0 0 18px rgba(255, 200, 78, .65);
+}
+.keyboard-37 .piano-key.calibration-target .note-marker {
+  transform: translateX(-50%) scale(1.13);
+  outline: 3px solid rgba(255, 255, 255, .95);
+  box-shadow: 0 0 0 5px rgba(255, 180, 48, .55), 0 2px 5px rgba(0,0,0,.25);
 }
 
 /* En ejecución la interfaz se convierte en una superficie de práctica casi completa. */
