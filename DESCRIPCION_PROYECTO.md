@@ -21,12 +21,14 @@ El proyecto está desarrollado con **HTML, CSS y JavaScript puro**. No requiere 
 - Detección monofónica mediante una implementación del algoritmo YIN.
 - Mensajes específicos para diagnosticar errores de permiso del micrófono.
 - Calibración guiada de octava mediante Do, Mi y Sol, con ajuste guardado en el dispositivo.
-- Modo de interpretación continua.
+- Modo de interpretación continua, que espera la primera nota antes de poner en marcha el desplazamiento.
 - Modo que espera hasta detectar la nota correcta.
 - Previsualización sonora de la pieza mediante síntesis Web Audio.
-- Desplazamiento de la partitura y resaltado de teclas durante la previsualización.
+- Desplazamiento compacto de la partitura para mostrar más notas próximas en pantalla.
+- Resaltado de teclas durante la previsualización.
 - Dos piezas incluidas: **Oda a la alegría** y **Estrellita**.
 - Importación de piezas mediante JSON.
+- Importación directa de archivos MIDI (`.mid` y `.midi`) con extracción automática de una melodía monofónica.
 - Service worker para funcionamiento sin conexión después de la primera carga.
 - Manifiesto e iconos para instalación como PWA.
 
@@ -222,6 +224,21 @@ piano-coach-mvp/
     ├── demo.json
     └── twinkle.json
 ```
+
+## Importar un archivo MIDI
+
+Pulsa **Añadir JSON/MIDI** y selecciona un archivo `.mid` o `.midi`. La conversión se realiza completamente en el navegador y no necesita conexión ni sube el archivo a ningún servidor.
+
+La aplicación:
+
+- Lee archivos MIDI estándar de tipo 0, 1 y 2 con resolución PPQN.
+- Ignora el canal de percusión.
+- Elige automáticamente la pista o canal que más probablemente contiene la melodía.
+- En acordes simultáneos conserva la nota más aguda.
+- Recorta solapamientos para obtener una línea monofónica compatible con el modo de práctica.
+- Utiliza el tempo y el compás iniciales del archivo.
+
+Los MIDI con ambas manos mezcladas en una sola pista pueden requerir una revisión posterior, ya que la extracción de melodía es automática. Los cambios de tempo posteriores al inicio se simplifican a un tempo único porque el formato actual de la aplicación usa un solo valor BPM.
 
 ## Formato de las piezas
 

@@ -36,6 +36,7 @@ const state = {
   mode: 'continuous',
   sessionKind: null,
   playing: false,
+  continuousStarted: false,
   wakeLock: null,
   wakeLockRequest: null,
   micReady: false,
@@ -218,23 +219,40 @@ function setPiece(piece) {
 async function importPieceFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+
   try {
-    const text = await file.text();
-    const piece = validatePiece(JSON.parse(text));
-    state.selectedPieceId = 'custom';
-    const customOption = Array.from(els.pieceSelect.options).find((option) => option.value === 'custom') || document.createElement('option');
-    customOption.value = 'custom';
-    customOption.textContent = piece.title;
-    if (!customOption.parentElement) els.pieceSelect.appendChild(customOption);
-    els.pieceSelect.value = 'custom';
-    setPiece(piece);
-    updateAllUI();
-    showToast(`Pieza cargada: ${piece.title}`);
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    let piece;
+    let successMessage;
+
+    if (extension === 'mid' || extension === 'midi') {
+      if (!window.MidiImporter?.convert) throw new Error('El conversor MIDI no está disponible. Recarga la aplicación.');
+      const result = window.MidiImporter.convert(await file.arrayBuffer(), file.name);
+      piece = validatePiece(result.piece);
+      successMessage = `MIDI convertido: ${piece.title} · ${piece.notes.length} notas · ${result.details.selectedTrack}`;
+    } else {
+      piece = validatePiece(JSON.parse(await file.text()));
+      successMessage = `Pieza cargada: ${piece.title}`;
+    }
+
+    setCustomPiece(piece);
+    showToast(successMessage);
   } catch (error) {
     showToast(error instanceof Error ? error.message : 'No se pudo leer la pieza.');
   } finally {
     event.target.value = '';
   }
+}
+
+function setCustomPiece(piece) {
+  state.selectedPieceId = 'custom';
+  const customOption = Array.from(els.pieceSelect.options).find((option) => option.value === 'custom') || document.createElement('option');
+  customOption.value = 'custom';
+  customOption.textContent = piece.title;
+  if (!customOption.parentElement) els.pieceSelect.appendChild(customOption);
+  els.pieceSelect.value = 'custom';
+  setPiece(piece);
+  updateAllUI();
 }
 
 async function toggleMicrophone() {
@@ -533,11 +551,15 @@ function formatPitchOffsetShort(offset) {
 async function startPractice() {
   if (!state.piece) return;
   if (state.calibration.active) cancelCalibration();
+  if (state.mode === 'continuous' && !state.micReady) {
+    showToast('Activa el micrófono antes de iniciar: el modo continuo espera a que toques la primera nota.');
+    return;
+  }
   prepareSession('practice');
   state.playing = true;
   await requestScreenWakeLock();
   await enterLandscapeMode();
-  if (!state.micReady) showToast('La práctica avanzará, pero debes activar el micrófono para validar notas.');
+  if (!state.micReady) showToast('Activa el micrófono para validar las notas.');
   startLoop();
   updateAllUI();
 }
@@ -565,6 +587,7 @@ function prepareSession(kind) {
   stopSynthVoices();
   state.sessionKind = kind;
   state.playing = false;
+  state.continuousStarted = kind !== 'practice' || state.mode !== 'continuous';
   state.currentSeconds = 0;
   state.currentIndex = 0;
   state.lastFrameAt = performance.now();
@@ -594,6 +617,7 @@ function stopSession() {
   if (!state.sessionKind) return;
   const wasPractice = state.sessionKind === 'practice';
   state.playing = false;
+  state.continuousStarted = false;
   stopSynthVoices();
   if (wasPractice && state.mode === 'continuous') evaluateMissedNotes();
   state.sessionKind = null;
@@ -609,6 +633,7 @@ function stopSession() {
 
 function resetSession() {
   state.playing = false;
+  state.continuousStarted = false;
   state.sessionKind = null;
   state.currentSeconds = 0;
   state.currentIndex = 0;
@@ -717,6 +742,11 @@ function advanceTransport(delta) {
     state.currentIndex = getTemporalNoteIndex();
     if (state.currentSeconds >= getPieceDurationSeconds()) finishSession();
   } else if (state.mode === 'continuous') {
+    if (!state.continuousStarted) {
+      state.currentIndex = 0;
+      updateDynamicUI();
+      return;
+    }
     state.currentSeconds += delta;
     evaluateMissedNotes();
     state.currentIndex = getExpectedIndex();
@@ -855,6 +885,13 @@ function acceptDetectedNote(midi, timestamp) {
     state.lastAcceptedAt = timestamp;
     flashKey(expected.midi, 'detected');
 
+    if (state.mode === 'continuous' && !state.continuousStarted && expectedIndex === 0) {
+      state.continuousStarted = true;
+      state.currentSeconds = beatToSeconds(expected.startBeat);
+      state.lastFrameAt = performance.now();
+      showToast('Primera nota detectada. Comienza la práctica.');
+    }
+
     if (state.mode === 'wait') {
       state.currentIndex += 1;
       const next = state.piece.notes[state.currentIndex];
@@ -907,6 +944,7 @@ function getTemporalNoteIndex() {
 function finishSession() {
   const completedKind = state.sessionKind;
   state.playing = false;
+  state.continuousStarted = false;
   stopSynthVoices();
   if (completedKind === 'practice' && state.mode === 'continuous') evaluateMissedNotes();
   state.sessionKind = null;
@@ -941,6 +979,7 @@ function updateAllUI() {
 function updateTransportUI() {
   let status = 'Preparado';
   if (state.sessionKind === 'preview') status = state.playing ? 'Previsualizando' : 'Previsualización pausada';
+  else if (state.sessionKind === 'practice' && state.playing && state.mode === 'continuous' && !state.continuousStarted) status = 'Esperando primera nota';
   else if (state.sessionKind === 'practice' && state.playing && state.mode === 'wait') status = 'Esperando nota';
   else if (state.sessionKind === 'practice' && state.playing) status = 'Practicando';
   else if (state.sessionKind === 'practice') status = 'Práctica pausada';
@@ -1117,7 +1156,8 @@ function drawScore() {
   const staffTop = height * 0.29;
   const lineGap = Math.min(22, height * 0.09);
   const playheadX = Math.min(width * 0.23, 210);
-  const pixelsPerBeat = Math.max(56, width / 9.2);
+  // Una escala más compacta permite anticipar aproximadamente 15 pulsos en pantalla.
+  const pixelsPerBeat = Math.max(36, width / 15.5);
   const currentBeat = secondsToBeat(state.currentSeconds);
 
   context.strokeStyle = '#3d4651';

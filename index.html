@@ -75,9 +75,9 @@
         <span>Indicar tecla</span>
       </label>
 
-      <label class="file-button">
-        Añadir pieza JSON
-        <input id="pieceFileInput" type="file" accept="application/json,.json" />
+      <label class="file-button" title="Importa una pieza JSON o convierte automáticamente una melodía MIDI">
+        Añadir JSON/MIDI
+        <input id="pieceFileInput" type="file" accept="application/json,.json,audio/midi,audio/x-midi,.mid,.midi" />
       </label>
 
       <button id="calibrateButton" class="button button-ghost" type="button">🎹 Calibrar</button>
@@ -171,6 +171,7 @@
   </main>
 
   <template id="toastTemplate"><div class="toast" role="status"></div></template>
+  <script src="midi-import.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

@@ -1,9 +1,10 @@
-const CACHE_NAME = 'piano-coach-mvp-v9';
+const CACHE_NAME = 'piano-coach-mvp-v11';
 const APP_ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './midi-import.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -33,7 +34,7 @@ self.addEventListener('fetch', (event) => {
 
   const requestUrl = new URL(event.request.url);
   const isFreshAsset = requestUrl.origin === self.location.origin
-    && (requestUrl.pathname.endsWith('/styles.css') || requestUrl.pathname.endsWith('/app.js'));
+    && (requestUrl.pathname.endsWith('/styles.css') || requestUrl.pathname.endsWith('/app.js') || requestUrl.pathname.endsWith('/midi-import.js'));
 
   // El CSS y el JavaScript usan "network first": cuando hay conexión se
   // descarga siempre la versión más reciente y se actualiza la copia offline.
