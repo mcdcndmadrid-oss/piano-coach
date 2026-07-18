@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#101828" />
+  <meta name="description" content="MVP móvil para practicar piano con partitura desplazable y reconocimiento de notas por micrófono." />
+  <title>Piano Coach MVP</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Piano Coach" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Piano Coach</p>
+        <h1 id="pieceTitle">Oda a la alegría</h1>
+        <p id="pieceMeta" class="muted">L. van Beethoven · Demo monofónica</p>
+      </div>
+      <button id="micButton" class="button button-primary" type="button">Activar micrófono</button>
+    </header>
+
+    <section class="panel controls" aria-label="Controles de práctica">
+      <div class="control-group compact-actions">
+        <button id="playButton" class="button" type="button">▶ Empezar</button>
+        <button id="resetButton" class="button button-ghost" type="button">↺ Reiniciar</button>
+      </div>
+
+      <label class="control-group">
+        <span>Modo</span>
+        <select id="modeSelect">
+          <option value="continuous">Interpretación continua</option>
+          <option value="wait">Esperar nota correcta</option>
+        </select>
+      </label>
+
+      <label class="control-group range-control">
+        <span>Tempo: <strong id="tempoValue">92</strong> BPM</span>
+        <input id="tempoInput" type="range" min="40" max="180" value="92" step="1" />
+      </label>
+
+      <label class="control-group">
+        <span>Teclado</span>
+        <select id="keyboardSizeSelect">
+          <option value="25">25 teclas</option>
+          <option value="49">49 teclas</option>
+          <option value="61" selected>61 teclas</option>
+          <option value="76">76 teclas</option>
+          <option value="88">88 teclas</option>
+        </select>
+      </label>
+
+      <label class="switch-row">
+        <input id="hintsToggle" type="checkbox" checked />
+        <span>Mostrar tecla esperada</span>
+      </label>
+
+      <label class="file-button">
+        Añadir pieza JSON
+        <input id="pieceFileInput" type="file" accept="application/json,.json" />
+      </label>
+    </section>
+
+    <section class="panel score-panel" aria-label="Partitura">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Partitura</p>
+          <h2>Notas próximas</h2>
+        </div>
+        <div id="transportStatus" class="status-pill">Preparado</div>
+      </div>
+      <canvas id="scoreCanvas" width="1400" height="300" aria-label="Partitura desplazable simplificada"></canvas>
+      <div class="legend">
+        <span><i class="dot dot-current"></i>Actual</span>
+        <span><i class="dot dot-correct"></i>Correcta</span>
+        <span><i class="dot dot-error"></i>Error</span>
+        <span><i class="dot dot-pending"></i>Pendiente</span>
+      </div>
+    </section>
+
+    <section class="feedback-grid" aria-label="Información de reconocimiento">
+      <article class="metric-card">
+        <span>Nota esperada</span>
+        <strong id="expectedNote">—</strong>
+      </article>
+      <article class="metric-card">
+        <span>Nota detectada</span>
+        <strong id="detectedNote">—</strong>
+      </article>
+      <article class="metric-card">
+        <span>Frecuencia</span>
+        <strong id="frequencyValue">—</strong>
+      </article>
+      <article class="metric-card">
+        <span>Confianza</span>
+        <strong id="confidenceValue">—</strong>
+      </article>
+      <article class="metric-card">
+        <span>Aciertos</span>
+        <strong id="correctValue">0</strong>
+      </article>
+      <article class="metric-card">
+        <span>Errores</span>
+        <strong id="errorValue">0</strong>
+      </article>
+    </section>
+
+    <section class="panel keyboard-panel" aria-label="Teclado de piano">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Teclado</p>
+          <h2>Referencia visual</h2>
+        </div>
+        <p id="microphoneHint" class="muted">Activa el micrófono y toca una nota.</p>
+      </div>
+      <div id="keyboardViewport" class="keyboard-viewport">
+        <div id="keyboard" class="keyboard"></div>
+      </div>
+    </section>
+
+    <section class="panel session-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Sesión</p>
+          <h2>Resultado provisional</h2>
+        </div>
+      </div>
+      <div class="progress-track" aria-label="Progreso de la pieza">
+        <div id="progressBar" class="progress-bar"></div>
+      </div>
+      <p id="sessionSummary" class="session-summary">Todavía no hay resultados.</p>
+    </section>
+  </main>
+
+  <template id="toastTemplate">
+    <div class="toast" role="status"></div>
+  </template>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
