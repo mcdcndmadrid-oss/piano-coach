@@ -1,0 +1,15 @@
+{
+  "title": "Estrellita",
+  "composer": "Canción tradicional",
+  "tempo": 88,
+  "timeSignature": "4/4",
+  "description": "Estrellita, ¿dónde estás? · melodía monofónica de prueba",
+  "notes": [
+    {"midi":60,"startBeat":0,"durationBeats":1},{"midi":60,"startBeat":1,"durationBeats":1},{"midi":67,"startBeat":2,"durationBeats":1},{"midi":67,"startBeat":3,"durationBeats":1},{"midi":69,"startBeat":4,"durationBeats":1},{"midi":69,"startBeat":5,"durationBeats":1},{"midi":67,"startBeat":6,"durationBeats":2},
+    {"midi":65,"startBeat":8,"durationBeats":1},{"midi":65,"startBeat":9,"durationBeats":1},{"midi":64,"startBeat":10,"durationBeats":1},{"midi":64,"startBeat":11,"durationBeats":1},{"midi":62,"startBeat":12,"durationBeats":1},{"midi":62,"startBeat":13,"durationBeats":1},{"midi":60,"startBeat":14,"durationBeats":2},
+    {"midi":67,"startBeat":16,"durationBeats":1},{"midi":67,"startBeat":17,"durationBeats":1},{"midi":65,"startBeat":18,"durationBeats":1},{"midi":65,"startBeat":19,"durationBeats":1},{"midi":64,"startBeat":20,"durationBeats":1},{"midi":64,"startBeat":21,"durationBeats":1},{"midi":62,"startBeat":22,"durationBeats":2},
+    {"midi":67,"startBeat":24,"durationBeats":1},{"midi":67,"startBeat":25,"durationBeats":1},{"midi":65,"startBeat":26,"durationBeats":1},{"midi":65,"startBeat":27,"durationBeats":1},{"midi":64,"startBeat":28,"durationBeats":1},{"midi":64,"startBeat":29,"durationBeats":1},{"midi":62,"startBeat":30,"durationBeats":2},
+    {"midi":60,"startBeat":32,"durationBeats":1},{"midi":60,"startBeat":33,"durationBeats":1},{"midi":67,"startBeat":34,"durationBeats":1},{"midi":67,"startBeat":35,"durationBeats":1},{"midi":69,"startBeat":36,"durationBeats":1},{"midi":69,"startBeat":37,"durationBeats":1},{"midi":67,"startBeat":38,"durationBeats":2},
+    {"midi":65,"startBeat":40,"durationBeats":1},{"midi":65,"startBeat":41,"durationBeats":1},{"midi":64,"startBeat":42,"durationBeats":1},{"midi":64,"startBeat":43,"durationBeats":1},{"midi":62,"startBeat":44,"durationBeats":1},{"midi":62,"startBeat":45,"durationBeats":1},{"midi":60,"startBeat":46,"durationBeats":2}
+  ]
+}

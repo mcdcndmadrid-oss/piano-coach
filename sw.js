@@ -1,15 +1,15 @@
-const CACHE_NAME = 'piano-coach-mvp-v2';
+const CACHE_NAME = 'piano-coach-mvp-v4';
 const APP_ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
   './manifest.webmanifest',
-  './pieces/demo.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png'
+  './pieces/demo.json',
+  './pieces/twinkle.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -29,6 +29,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+      if (!response || response.status !== 200 || response.type === 'opaque') return response;
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      return response;
+    }).catch(() => caches.match('./index.html')))
   );
 });

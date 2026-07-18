@@ -1,23 +1,39 @@
 'use strict';
 
-const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const NOTE_NAMES = ['Do', 'Do♯', 'Re', 'Re♯', 'Mi', 'Fa', 'Fa♯', 'Sol', 'Sol♯', 'La', 'La♯', 'Si'];
 const BLACK_PITCH_CLASSES = new Set([1, 3, 6, 8, 10]);
+const SOLFEGE_MARKERS = {
+  0: { text: 'do', className: 'note-do' },
+  2: { text: 're', className: 'note-re' },
+  4: { text: 'mi', className: 'note-mi' },
+  5: { text: 'fa', className: 'note-fa' },
+  7: { text: 'sol', className: 'note-sol' },
+  9: { text: 'la', className: 'note-la' },
+  11: { text: 'si', className: 'note-si' }
+};
 const KEYBOARD_RANGES = {
   25: [48, 72],
+  37: [36, 72],
   49: [36, 84],
   61: [36, 96],
   76: [28, 103],
   88: [21, 108]
 };
+const BUILT_IN_PIECES = {
+  demo: './pieces/demo.json',
+  twinkle: './pieces/twinkle.json'
+};
 
 const state = {
   piece: null,
+  selectedPieceId: 'demo',
   tempo: 92,
   mode: 'continuous',
+  sessionKind: null,
   playing: false,
   micReady: false,
   showHints: true,
-  keyboardSize: 61,
+  keyboardSize: 37,
   audioContext: null,
   analyser: null,
   source: null,
@@ -37,7 +53,9 @@ const state = {
   detectedConfidence: 0,
   scoreCanvasScale: window.devicePixelRatio || 1,
   lastDrawAt: 0,
-  lastAnalysisAt: 0
+  lastAnalysisAt: 0,
+  previewPlayedIndexes: new Set(),
+  activeSynthNodes: new Set()
 };
 
 const els = {};
@@ -47,16 +65,19 @@ window.addEventListener('DOMContentLoaded', init);
 async function init() {
   cacheElements();
   bindEvents();
-  await loadDemoPiece();
   restoreSettings();
+  await loadBuiltInPiece(state.selectedPieceId, false);
   renderKeyboard();
   resizeCanvas();
   updateAllUI();
+  updateOrientationState();
 
   window.addEventListener('resize', () => {
     resizeCanvas();
     renderKeyboard();
+    updateOrientationState();
   });
+  window.addEventListener('orientationchange', () => window.setTimeout(updateOrientationState, 150));
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('./sw.js').catch(() => undefined);
@@ -65,9 +86,12 @@ async function init() {
 
 function cacheElements() {
   const ids = [
-    'pieceTitle', 'pieceMeta', 'micButton', 'playButton', 'resetButton', 'modeSelect',
-    'tempoInput', 'tempoValue', 'keyboardSizeSelect', 'hintsToggle', 'pieceFileInput',
-    'transportStatus', 'scoreCanvas', 'expectedNote', 'detectedNote', 'frequencyValue',
+    'pieceTitle', 'pieceMeta', 'pieceSelect', 'micButton', 'playButton', 'previewButton',
+    'resetButton', 'modeSelect', 'tempoInput', 'tempoValue', 'keyboardSizeSelect',
+    'hintsToggle', 'pieceFileInput', 'micHelp', 'micHelpTitle', 'micHelpText',
+    'retryMicButton', 'stagePauseButton', 'stageStopButton', 'stagePieceTitle',
+    'transportStatus', 'setupTransportStatus', 'stageExpectedNote', 'stageDetectedNote',
+    'stageProgressBar', 'scoreCanvas', 'expectedNote', 'detectedNote', 'frequencyValue',
     'confidenceValue', 'correctValue', 'errorValue', 'keyboardViewport', 'keyboard',
     'microphoneHint', 'progressBar', 'sessionSummary', 'toastTemplate'
   ];
@@ -75,9 +99,18 @@ function cacheElements() {
 }
 
 function bindEvents() {
-  els.micButton.addEventListener('click', enableMicrophone);
-  els.playButton.addEventListener('click', togglePlayback);
+  els.micButton.addEventListener('click', toggleMicrophone);
+  els.retryMicButton.addEventListener('click', enableMicrophone);
+  els.playButton.addEventListener('click', startPractice);
+  els.previewButton.addEventListener('click', startPreview);
+  els.stagePauseButton.addEventListener('click', toggleStagePause);
+  els.stageStopButton.addEventListener('click', stopSession);
   els.resetButton.addEventListener('click', resetSession);
+  els.pieceSelect.addEventListener('change', async () => {
+    state.selectedPieceId = els.pieceSelect.value;
+    await loadBuiltInPiece(state.selectedPieceId, true);
+    saveSettings();
+  });
   els.modeSelect.addEventListener('change', () => {
     state.mode = els.modeSelect.value;
     resetSession();
@@ -99,14 +132,19 @@ function bindEvents() {
     saveSettings();
   });
   els.pieceFileInput.addEventListener('change', importPieceFile);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state.sessionKind && state.playing) toggleStagePause();
+  });
 }
 
-async function loadDemoPiece() {
+async function loadBuiltInPiece(id, announce) {
+  const path = BUILT_IN_PIECES[id] || BUILT_IN_PIECES.demo;
   try {
-    const response = await fetch('./pieces/demo.json');
-    if (!response.ok) throw new Error('No se pudo cargar la demo');
+    const response = await fetch(path, { cache: 'no-cache' });
+    if (!response.ok) throw new Error('No se pudo cargar la pieza');
     const data = await response.json();
     setPiece(validatePiece(data));
+    if (announce) showToast(`Pieza cargada: ${data.title}`);
   } catch (error) {
     setPiece(validatePiece({
       title: 'Escala de Do',
@@ -119,6 +157,7 @@ async function loadDemoPiece() {
         durationBeats: 1
       }))
     }));
+    if (announce) showToast('No se pudo cargar la pieza seleccionada; se ha abierto una escala local.');
   }
 }
 
@@ -159,6 +198,12 @@ async function importPieceFile(event) {
   try {
     const text = await file.text();
     const piece = validatePiece(JSON.parse(text));
+    state.selectedPieceId = 'custom';
+    const customOption = Array.from(els.pieceSelect.options).find((option) => option.value === 'custom') || document.createElement('option');
+    customOption.value = 'custom';
+    customOption.textContent = piece.title;
+    if (!customOption.parentElement) els.pieceSelect.appendChild(customOption);
+    els.pieceSelect.value = 'custom';
     setPiece(piece);
     updateAllUI();
     showToast(`Pieza cargada: ${piece.title}`);
@@ -169,66 +214,240 @@ async function importPieceFile(event) {
   }
 }
 
+async function toggleMicrophone() {
+  if (state.micReady) {
+    disableMicrophone();
+    return;
+  }
+  await enableMicrophone();
+}
+
 async function enableMicrophone() {
+  hideMicHelp();
+
+  if (!window.isSecureContext) {
+    showMicHelp(
+      'Chrome exige una conexión segura',
+      'Abre la app desde una dirección HTTPS. En un ordenador también funciona en http://localhost. Una dirección http://192.168… del ordenador no suele autorizar el micrófono en el móvil.'
+    );
+    return;
+  }
+
   if (!navigator.mediaDevices?.getUserMedia) {
-    showToast('Este navegador no permite acceder al micrófono. Usa HTTPS o localhost.');
+    showMicHelp(
+      'El navegador no ofrece acceso al micrófono',
+      'Actualiza Chrome o prueba la app instalada como PWA desde una dirección HTTPS.'
+    );
     return;
   }
 
   try {
-    if (state.audioContext?.state === 'suspended') await state.audioContext.resume();
-    if (state.micReady) return;
+    if (navigator.permissions?.query) {
+      try {
+        const permission = await navigator.permissions.query({ name: 'microphone' });
+        if (permission.state === 'denied') {
+          showMicHelp(
+            'El permiso del micrófono está bloqueado',
+            'En Chrome toca el icono de ajustes junto a la dirección → Permisos → Micrófono → Permitir. En Android revisa también Ajustes → Aplicaciones → Chrome → Permisos → Micrófono.'
+          );
+          return;
+        }
+      } catch (_) {
+        // Algunos navegadores no admiten consultar este permiso; getUserMedia mostrará el diálogo.
+      }
+    }
 
-    state.stream = await navigator.mediaDevices.getUserMedia({
+    const preferredConstraints = {
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        channelCount: 1
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 44100 }
       }
-    });
+    };
 
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    state.audioContext = new AudioContextClass();
-    state.analyser = state.audioContext.createAnalyser();
+    try {
+      state.stream = await navigator.mediaDevices.getUserMedia(preferredConstraints);
+    } catch (firstError) {
+      if (firstError?.name === 'OverconstrainedError' || firstError?.name === 'ConstraintNotSatisfiedError') {
+        state.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } else {
+        throw firstError;
+      }
+    }
+
+    const audioContext = await getAudioContext();
+    state.analyser = audioContext.createAnalyser();
     state.analyser.fftSize = 4096;
     state.analyser.smoothingTimeConstant = 0;
     state.audioBuffer = new Float32Array(state.analyser.fftSize);
-    state.source = state.audioContext.createMediaStreamSource(state.stream);
+    state.source = audioContext.createMediaStreamSource(state.stream);
     state.source.connect(state.analyser);
     state.micReady = true;
-    els.micButton.textContent = 'Micrófono activo';
-    els.micButton.disabled = true;
-    els.microphoneHint.textContent = 'Escuchando. Toca una nota clara y sostenida.';
-    showToast('Micrófono activado. Evita ruido de fondo y usa auriculares para el metrónomo.');
+    els.micButton.textContent = 'Desactivar micrófono';
+    els.micButton.classList.add('is-active');
+    els.microphoneHint.textContent = 'Micrófono activo. Toca una nota clara y sostenida.';
+    hideMicHelp();
+    showToast('Micrófono activado. El audio se analiza localmente.');
     startLoop();
   } catch (error) {
-    showToast('No se pudo activar el micrófono. Revisa el permiso del navegador.');
+    handleMicrophoneError(error);
   }
 }
 
-function togglePlayback() {
-  if (!state.piece) return;
-  state.playing = !state.playing;
-  state.lastFrameAt = performance.now();
-  if (state.playing && !state.micReady) showToast('La pieza puede avanzar, pero necesitas activar el micrófono para validar notas.');
-  startLoop();
-  updateTransportUI();
+function handleMicrophoneError(error) {
+  const name = error?.name || 'Error';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+    showMicHelp(
+      'Chrome no tiene permiso para usar el micrófono',
+      'Toca el icono de ajustes junto a la dirección → Permisos → Micrófono → Permitir y recarga la app. En Android revisa también Ajustes → Aplicaciones → Chrome → Permisos → Micrófono. Si usas la PWA instalada, comprueba el permiso del sitio desde Chrome.'
+    );
+  } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    showMicHelp('No se encontró ningún micrófono', 'Comprueba que el dispositivo dispone de micrófono y que no está deshabilitado por el sistema.');
+  } else if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'AbortError') {
+    showMicHelp('El micrófono está ocupado o bloqueado', 'Cierra llamadas, grabadoras y otras aplicaciones que puedan estar usando el micrófono. Después vuelve a Chrome y pulsa Reintentar.');
+  } else {
+    showMicHelp('No se pudo activar el micrófono', `Chrome devolvió ${name}. Comprueba HTTPS, el permiso del sitio y el permiso de Android, y después pulsa Reintentar.`);
+  }
 }
 
-function resetSession() {
+function disableMicrophone() {
+  state.stream?.getTracks().forEach((track) => track.stop());
+  state.source?.disconnect();
+  state.stream = null;
+  state.source = null;
+  state.analyser = null;
+  state.audioBuffer = null;
+  state.micReady = false;
+  state.detectedMidi = null;
+  state.detectedFrequency = null;
+  state.detectedConfidence = 0;
+  els.micButton.textContent = 'Activar micrófono';
+  els.micButton.classList.remove('is-active');
+  els.microphoneHint.textContent = 'Activa el micrófono para validar notas.';
+  updateDynamicUI();
+}
+
+function showMicHelp(title, text) {
+  els.micHelpTitle.textContent = title;
+  els.micHelpText.textContent = text;
+  els.micHelp.hidden = false;
+}
+
+function hideMicHelp() {
+  els.micHelp.hidden = true;
+}
+
+async function startPractice() {
+  if (!state.piece) return;
+  prepareSession('practice');
+  state.playing = true;
+  await enterLandscapeMode();
+  if (!state.micReady) showToast('La práctica avanzará, pero debes activar el micrófono para validar notas.');
+  startLoop();
+  updateAllUI();
+}
+
+async function startPreview() {
+  if (!state.piece) return;
+  try {
+    await getAudioContext();
+  } catch (_) {
+    showToast('Este navegador no permite reproducir la previsualización mediante Web Audio.');
+    return;
+  }
+  prepareSession('preview');
+  state.playing = true;
+  await enterLandscapeMode();
+  triggerPreviewNotes(-0.01, 0.01);
+  startLoop();
+  updateAllUI();
+  showToast('Previsualización: escucha la pieza y sigue las teclas iluminadas.');
+}
+
+function prepareSession(kind) {
+  stopSynthVoices();
+  state.sessionKind = kind;
   state.playing = false;
   state.currentSeconds = 0;
   state.currentIndex = 0;
   state.lastFrameAt = performance.now();
   state.lastAcceptedAt = 0;
+  state.previewPlayedIndexes = new Set();
+  state.noteResults = state.piece.notes.map(() => 'pending');
+  state.wrongAttempts = 0;
+  state.stableMidi = null;
+  state.stableCount = 0;
+  document.body.classList.add('session-active');
+  requestAnimationFrame(() => {
+    resizeCanvas();
+    renderKeyboard();
+  });
+}
+
+function toggleStagePause() {
+  if (!state.sessionKind) return;
+  state.playing = !state.playing;
+  state.lastFrameAt = performance.now();
+  if (!state.playing) stopSynthVoices();
+  startLoop();
+  updateTransportUI();
+}
+
+function stopSession() {
+  if (!state.sessionKind) return;
+  const wasPractice = state.sessionKind === 'practice';
+  state.playing = false;
+  stopSynthVoices();
+  if (wasPractice && state.mode === 'continuous') evaluateMissedNotes();
+  state.sessionKind = null;
+  document.body.classList.remove('session-active');
+  exitFullscreenIfNeeded();
+  requestAnimationFrame(() => {
+    resizeCanvas();
+    renderKeyboard();
+    updateAllUI();
+  });
+}
+
+function resetSession() {
+  state.playing = false;
+  state.sessionKind = null;
+  state.currentSeconds = 0;
+  state.currentIndex = 0;
+  state.lastFrameAt = performance.now();
+  state.lastAcceptedAt = 0;
+  state.previewPlayedIndexes = new Set();
   state.noteResults = state.piece ? state.piece.notes.map(() => 'pending') : [];
   state.wrongAttempts = 0;
   state.detectedMidi = null;
   state.detectedFrequency = null;
   state.detectedConfidence = 0;
+  stopSynthVoices();
+  document.body.classList.remove('session-active');
   updateAllUI();
   drawScore();
+}
+
+async function enterLandscapeMode() {
+  try {
+    if (screen.orientation?.lock) await screen.orientation.lock('landscape');
+  } catch (_) {
+    // El bloqueo solo está disponible en algunos navegadores/PWA; la interfaz ya avisa en vertical.
+  }
+}
+
+function exitFullscreenIfNeeded() {
+  try {
+    if (screen.orientation?.unlock) screen.orientation.unlock();
+  } catch (_) {
+    // No todos los navegadores exponen unlock.
+  }
+}
+
+function updateOrientationState() {
+  document.documentElement.dataset.orientation = window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait';
 }
 
 function startLoop() {
@@ -239,7 +458,7 @@ function startLoop() {
     state.lastFrameAt = timestamp;
 
     if (state.playing) advanceTransport(delta);
-    if (state.micReady && timestamp - state.lastAnalysisAt > 70) {
+    if (state.micReady && state.sessionKind !== 'preview' && timestamp - state.lastAnalysisAt > 70) {
       state.lastAnalysisAt = timestamp;
       analyzeMicrophone(timestamp);
     }
@@ -253,12 +472,18 @@ function startLoop() {
 }
 
 function advanceTransport(delta) {
-  if (!state.piece) return;
+  if (!state.piece || !state.sessionKind) return;
 
-  if (state.mode === 'continuous') {
+  if (state.sessionKind === 'preview') {
+    const previousSeconds = state.currentSeconds;
+    state.currentSeconds += delta;
+    triggerPreviewNotes(previousSeconds, state.currentSeconds);
+    state.currentIndex = getTemporalNoteIndex();
+    if (state.currentSeconds >= getPieceDurationSeconds()) finishSession();
+  } else if (state.mode === 'continuous') {
     state.currentSeconds += delta;
     evaluateMissedNotes();
-    state.currentIndex = getContinuousExpectedIndex();
+    state.currentIndex = getExpectedIndex();
     if (state.currentSeconds >= getPieceDurationSeconds()) finishSession();
   } else {
     const note = state.piece.notes[state.currentIndex];
@@ -268,7 +493,75 @@ function advanceTransport(delta) {
   updateDynamicUI();
 }
 
+function triggerPreviewNotes(previousSeconds, currentSeconds) {
+  if (!state.piece || state.sessionKind !== 'preview') return;
+  state.piece.notes.forEach((note, index) => {
+    if (state.previewPlayedIndexes.has(index)) return;
+    const noteStart = beatToSeconds(note.startBeat);
+    if (noteStart >= previousSeconds - 0.015 && noteStart <= currentSeconds + 0.025) {
+      state.previewPlayedIndexes.add(index);
+      playSynthNote(note.midi, beatToSeconds(note.durationBeats));
+      flashKey(note.midi, 'preview');
+    }
+  });
+}
+
+async function getAudioContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error('Web Audio API no disponible');
+  if (!state.audioContext || state.audioContext.state === 'closed') state.audioContext = new AudioContextClass();
+  if (state.audioContext.state === 'suspended') await state.audioContext.resume();
+  return state.audioContext;
+}
+
+function playSynthNote(midi, durationSeconds) {
+  const context = state.audioContext;
+  if (!context || context.state !== 'running') return;
+  const now = context.currentTime;
+  const duration = clamp(durationSeconds, 0.12, 3.2);
+  const frequency = 440 * 2 ** ((midi - 69) / 12);
+  const master = context.createGain();
+  const filter = context.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(Math.min(4200, frequency * 7), now);
+  filter.Q.value = 0.6;
+  master.gain.setValueAtTime(0.0001, now);
+  master.gain.exponentialRampToValueAtTime(0.22, now + 0.012);
+  master.gain.exponentialRampToValueAtTime(0.095, now + 0.11);
+  master.gain.exponentialRampToValueAtTime(0.0001, now + duration + 0.32);
+  filter.connect(master);
+  master.connect(context.destination);
+
+  const harmonics = [
+    { ratio: 1, type: 'triangle', gain: 0.72 },
+    { ratio: 2, type: 'sine', gain: 0.20 },
+    { ratio: 3, type: 'sine', gain: 0.08 }
+  ];
+
+  harmonics.forEach((harmonic) => {
+    const oscillator = context.createOscillator();
+    const harmonicGain = context.createGain();
+    oscillator.type = harmonic.type;
+    oscillator.frequency.setValueAtTime(frequency * harmonic.ratio, now);
+    harmonicGain.gain.value = harmonic.gain;
+    oscillator.connect(harmonicGain);
+    harmonicGain.connect(filter);
+    oscillator.start(now);
+    oscillator.stop(now + duration + 0.35);
+    state.activeSynthNodes.add(oscillator);
+    oscillator.addEventListener('ended', () => state.activeSynthNodes.delete(oscillator), { once: true });
+  });
+}
+
+function stopSynthVoices() {
+  state.activeSynthNodes.forEach((node) => {
+    try { node.stop(); } catch (_) { /* ya detenido */ }
+  });
+  state.activeSynthNodes.clear();
+}
+
 function analyzeMicrophone(timestamp) {
+  if (!state.analyser || !state.audioBuffer || !state.audioContext) return;
   state.analyser.getFloatTimeDomainData(state.audioBuffer);
   const rms = calculateRms(state.audioBuffer);
 
@@ -285,8 +578,7 @@ function analyzeMicrophone(timestamp) {
   const result = yinPitch(state.audioBuffer, state.audioContext.sampleRate, 0.13);
   if (!result || result.frequency < 27 || result.frequency > 4300) return;
 
-  const midiFloat = frequencyToMidi(result.frequency);
-  const midi = Math.round(midiFloat);
+  const midi = Math.round(frequencyToMidi(result.frequency));
   if (midi < 21 || midi > 108) return;
 
   state.detectedMidi = midi;
@@ -306,8 +598,8 @@ function analyzeMicrophone(timestamp) {
 }
 
 function acceptDetectedNote(midi, timestamp) {
-  if (!state.playing || !state.piece) return;
-  const expectedIndex = state.mode === 'wait' ? state.currentIndex : getContinuousExpectedIndex();
+  if (!state.playing || state.sessionKind !== 'practice' || !state.piece) return;
+  const expectedIndex = state.mode === 'wait' ? state.currentIndex : getExpectedIndex();
   const expected = state.piece.notes[expectedIndex];
   if (!expected) return;
 
@@ -333,7 +625,7 @@ function acceptDetectedNote(midi, timestamp) {
 }
 
 function evaluateMissedNotes() {
-  const graceSeconds = 0.4;
+  const graceSeconds = 0.45;
   state.piece.notes.forEach((note, index) => {
     const noteEnd = beatToSeconds(note.startBeat + note.durationBeats);
     if (state.currentSeconds > noteEnd + graceSeconds && state.noteResults[index] === 'pending') {
@@ -342,57 +634,87 @@ function evaluateMissedNotes() {
   });
 }
 
-function getContinuousExpectedIndex() {
+function getExpectedIndex() {
   if (!state.piece) return 0;
-  const targetBeat = secondsToBeat(state.currentSeconds);
-  let bestIndex = state.piece.notes.length - 1;
-  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < state.piece.notes.length; index += 1) {
+    const result = state.noteResults[index];
+    if (result === 'correct' || result === 'missed') continue;
+    const note = state.piece.notes[index];
+    const noteEnd = beatToSeconds(note.startBeat + note.durationBeats) + 0.45;
+    if (state.currentSeconds <= noteEnd) return index;
+  }
+  return state.piece.notes.length - 1;
+}
 
-  state.piece.notes.forEach((note, index) => {
-    if (state.noteResults[index] === 'correct' || state.noteResults[index] === 'missed') return;
-    const distance = Math.abs(note.startBeat - targetBeat);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestIndex = index;
-    }
-  });
-  return bestIndex;
+function getTemporalNoteIndex() {
+  if (!state.piece) return 0;
+  const beat = secondsToBeat(state.currentSeconds);
+  let current = 0;
+  for (let index = 0; index < state.piece.notes.length; index += 1) {
+    if (state.piece.notes[index].startBeat <= beat + 0.02) current = index;
+    else break;
+  }
+  return current;
 }
 
 function finishSession() {
+  const completedKind = state.sessionKind;
   state.playing = false;
-  if (state.mode === 'continuous') evaluateMissedNotes();
-  updateAllUI();
-  showToast('Sesión terminada. Revisa el resumen de resultados.');
+  stopSynthVoices();
+  if (completedKind === 'practice' && state.mode === 'continuous') evaluateMissedNotes();
+  state.sessionKind = null;
+  document.body.classList.remove('session-active');
+  exitFullscreenIfNeeded();
+  requestAnimationFrame(() => {
+    resizeCanvas();
+    renderKeyboard();
+    updateAllUI();
+  });
+  showToast(completedKind === 'preview' ? 'Previsualización terminada.' : 'Sesión terminada. Revisa el resumen de resultados.');
 }
 
 function updateAllUI() {
   if (!state.piece) return;
   els.pieceTitle.textContent = state.piece.title;
   els.pieceMeta.textContent = `${state.piece.composer} · ${state.piece.description}`;
+  els.stagePieceTitle.textContent = state.piece.title;
   els.tempoInput.value = String(state.tempo);
   els.tempoValue.textContent = String(state.tempo);
   els.modeSelect.value = state.mode;
   els.keyboardSizeSelect.value = String(state.keyboardSize);
   els.hintsToggle.checked = state.showHints;
+  if (BUILT_IN_PIECES[state.selectedPieceId]) els.pieceSelect.value = state.selectedPieceId;
   updateTransportUI();
   updateDynamicUI();
   updateProgressUI();
 }
 
 function updateTransportUI() {
-  els.playButton.textContent = state.playing ? '⏸ Pausar' : '▶ Empezar';
-  if (!state.playing && state.currentSeconds === 0) els.transportStatus.textContent = 'Preparado';
-  else if (!state.playing) els.transportStatus.textContent = 'Pausado';
-  else if (state.mode === 'wait') els.transportStatus.textContent = 'Esperando nota';
-  else els.transportStatus.textContent = 'En reproducción';
+  let status = 'Preparado';
+  if (state.sessionKind === 'preview') status = state.playing ? 'Previsualizando' : 'Previsualización pausada';
+  else if (state.sessionKind === 'practice' && state.playing && state.mode === 'wait') status = 'Esperando nota';
+  else if (state.sessionKind === 'practice' && state.playing) status = 'Practicando';
+  else if (state.sessionKind === 'practice') status = 'Práctica pausada';
+  else if (state.currentSeconds > 0) status = 'Pausado';
+
+  els.transportStatus.textContent = status;
+  els.setupTransportStatus.textContent = status;
+  els.stagePauseButton.textContent = state.playing ? 'Ⅱ' : '▶';
+  els.stagePauseButton.setAttribute('aria-label', state.playing ? 'Pausar' : 'Continuar');
+  els.playButton.textContent = '▶ Practicar';
 }
 
 function updateDynamicUI() {
   if (!state.piece) return;
-  const expected = state.piece.notes[state.currentIndex] || state.piece.notes[getContinuousExpectedIndex()];
-  els.expectedNote.textContent = expected ? midiToNoteName(expected.midi) : 'Fin';
-  els.detectedNote.textContent = state.detectedMidi === null ? '—' : midiToNoteName(state.detectedMidi);
+  const expectedIndex = state.sessionKind === 'preview' ? getTemporalNoteIndex() : (state.mode === 'wait' ? state.currentIndex : getExpectedIndex());
+  const expected = state.piece.notes[expectedIndex];
+  const expectedText = expected ? midiToNoteName(expected.midi) : 'Fin';
+  const detectedText = state.detectedMidi === null ? '—' : midiToNoteName(state.detectedMidi);
+
+  els.expectedNote.textContent = expectedText;
+  els.stageExpectedNote.textContent = expectedText;
+  els.detectedNote.textContent = detectedText;
+  els.stageDetectedNote.textContent = state.sessionKind === 'preview' ? '—' : detectedText;
   els.frequencyValue.textContent = state.detectedFrequency ? `${state.detectedFrequency.toFixed(1)} Hz` : '—';
   els.confidenceValue.textContent = state.detectedConfidence ? `${Math.round(state.detectedConfidence * 100)} %` : '—';
 
@@ -409,10 +731,15 @@ function updateDynamicUI() {
 function updateProgressUI() {
   if (!state.piece) return;
   const total = state.piece.notes.length;
-  const progress = state.mode === 'wait'
-    ? state.currentIndex / total
-    : Math.min(state.currentSeconds / getPieceDurationSeconds(), 1);
-  els.progressBar.style.width = `${Math.max(0, Math.min(100, progress * 100))}%`;
+  let progress;
+  if (state.sessionKind === 'preview' || state.mode === 'continuous') {
+    progress = Math.min(state.currentSeconds / getPieceDurationSeconds(), 1);
+  } else {
+    progress = state.currentIndex / total;
+  }
+  const percent = `${Math.max(0, Math.min(100, progress * 100))}%`;
+  els.progressBar.style.width = percent;
+  els.stageProgressBar.style.width = percent;
 }
 
 function updateSessionSummary(correctCount, errorCount) {
@@ -426,36 +753,47 @@ function updateSessionSummary(correctCount, errorCount) {
 }
 
 function renderKeyboard() {
+  if (!els.keyboardViewport || !els.keyboard) return;
   const range = KEYBOARD_RANGES[state.keyboardSize] || KEYBOARD_RANGES[61];
   const [startMidi, endMidi] = range;
   const whiteMidis = [];
   for (let midi = startMidi; midi <= endMidi; midi += 1) {
-    if (!BLACK_PITCH_CLASSES.has(midi % 12)) whiteMidis.push(midi);
+    if (!BLACK_PITCH_CLASSES.has(((midi % 12) + 12) % 12)) whiteMidis.push(midi);
   }
 
-  const viewportWidth = Math.max(els.keyboardViewport.clientWidth || 720, 360);
-  const whiteWidth = Math.max(20, viewportWidth / Math.min(whiteMidis.length, 22));
-  const totalWidth = whiteWidth * whiteMidis.length;
-  const blackWidth = whiteWidth * 0.62;
+  const whiteWidthPercent = 100 / whiteMidis.length;
+  const blackWidthPercent = whiteWidthPercent * 0.64;
   els.keyboard.innerHTML = '';
-  els.keyboard.style.width = `${totalWidth}px`;
-  els.keyboard.style.minWidth = `${totalWidth}px`;
+  els.keyboard.style.width = '100%';
+  els.keyboard.style.minWidth = '0';
+  els.keyboard.classList.toggle('keyboard-37', state.keyboardSize === 37);
 
   let whiteIndex = 0;
   for (let midi = startMidi; midi <= endMidi; midi += 1) {
-    const isBlack = BLACK_PITCH_CLASSES.has(midi % 12);
+    const pitchClass = ((midi % 12) + 12) % 12;
+    const isBlack = BLACK_PITCH_CLASSES.has(pitchClass);
     const key = document.createElement('div');
     key.className = `piano-key ${isBlack ? 'black' : 'white'}`;
     key.dataset.midi = String(midi);
     key.title = midiToNoteName(midi);
 
     if (isBlack) {
-      key.style.width = `${blackWidth}px`;
-      key.style.left = `${whiteIndex * whiteWidth - blackWidth / 2}px`;
+      key.style.width = `${blackWidthPercent}%`;
+      key.style.left = `${whiteIndex * whiteWidthPercent - blackWidthPercent / 2}%`;
     } else {
-      key.style.width = `${whiteWidth}px`;
-      key.style.left = `${whiteIndex * whiteWidth}px`;
-      if (midi % 12 === 0) {
+      key.style.width = `${whiteWidthPercent}%`;
+      key.style.left = `${whiteIndex * whiteWidthPercent}%`;
+
+      if (state.keyboardSize === 37) {
+        const markerData = SOLFEGE_MARKERS[pitchClass];
+        if (markerData) {
+          const marker = document.createElement('span');
+          marker.className = `note-marker ${markerData.className}`;
+          marker.textContent = markerData.text;
+          marker.setAttribute('aria-hidden', 'true');
+          key.appendChild(marker);
+        }
+      } else if (pitchClass === 0) {
         const label = document.createElement('span');
         label.className = 'key-label';
         label.textContent = midiToNoteName(midi);
@@ -469,37 +807,32 @@ function renderKeyboard() {
 }
 
 function updateKeyboardHighlights() {
-  document.querySelectorAll('.piano-key.expected').forEach((key) => key.classList.remove('expected'));
-  if (!state.showHints || !state.piece) return;
-  const expected = state.mode === 'wait'
-    ? state.piece.notes[state.currentIndex]
-    : state.piece.notes[getContinuousExpectedIndex()];
-  if (!expected) return;
-  const key = els.keyboard.querySelector(`[data-midi="${expected.midi}"]`);
-  if (key) {
-    key.classList.add('expected');
-    ensureKeyVisible(key);
-  }
-}
+  els.keyboard.querySelectorAll('.piano-key.expected, .piano-key.preview-current').forEach((key) => {
+    key.classList.remove('expected', 'preview-current');
+  });
+  if (!state.piece) return;
 
-function ensureKeyVisible(key) {
-  const keyLeft = key.offsetLeft;
-  const keyRight = keyLeft + key.offsetWidth;
-  const viewLeft = els.keyboardViewport.scrollLeft;
-  const viewRight = viewLeft + els.keyboardViewport.clientWidth;
-  if (keyLeft < viewLeft || keyRight > viewRight) {
-    els.keyboardViewport.scrollTo({
-      left: Math.max(0, keyLeft - els.keyboardViewport.clientWidth / 2),
-      behavior: 'smooth'
-    });
+  let midi = null;
+  let className = 'expected';
+  if (state.sessionKind === 'preview') {
+    const note = state.piece.notes[getTemporalNoteIndex()];
+    midi = note?.midi ?? null;
+    className = 'preview-current';
+  } else if (state.showHints) {
+    const note = state.mode === 'wait' ? state.piece.notes[state.currentIndex] : state.piece.notes[getExpectedIndex()];
+    midi = note?.midi ?? null;
   }
+
+  if (midi === null) return;
+  const key = els.keyboard.querySelector(`[data-midi="${midi}"]`);
+  if (key) key.classList.add(className);
 }
 
 function flashKey(midi, className) {
   const key = els.keyboard.querySelector(`[data-midi="${midi}"]`);
   if (!key) return;
   key.classList.add(className, 'active');
-  window.setTimeout(() => key.classList.remove(className, 'active'), 240);
+  window.setTimeout(() => key.classList.remove(className, 'active'), 260);
 }
 
 function resizeCanvas() {
@@ -524,9 +857,9 @@ function drawScore() {
   context.fillRect(0, 0, width, height);
 
   const staffTop = height * 0.29;
-  const lineGap = Math.min(21, height * 0.085);
-  const playheadX = Math.min(width * 0.25, 210);
-  const pixelsPerBeat = Math.max(58, width / 8.8);
+  const lineGap = Math.min(22, height * 0.09);
+  const playheadX = Math.min(width * 0.23, 210);
+  const pixelsPerBeat = Math.max(56, width / 9.2);
   const currentBeat = secondsToBeat(state.currentSeconds);
 
   context.strokeStyle = '#3d4651';
@@ -564,19 +897,21 @@ function drawScore() {
     context.fillText(String(beat / beatsPerMeasure + 1), x, staffTop - 18);
   }
 
+  const activeIndex = state.sessionKind === 'preview' ? getTemporalNoteIndex() : (state.mode === 'wait' ? state.currentIndex : getExpectedIndex());
   state.piece.notes.forEach((note, index) => {
     const x = playheadX + (note.startBeat - currentBeat) * pixelsPerBeat;
     if (x < -35 || x > width + 35) return;
     const y = midiToStaffY(note.midi, staffTop, lineGap);
     const status = state.noteResults[index];
-    const isCurrent = index === (state.mode === 'wait' ? state.currentIndex : getContinuousExpectedIndex());
+    const isCurrent = index === activeIndex;
+
+    let noteColor = '#232a33';
+    if (state.sessionKind !== 'preview' && status === 'correct') noteColor = '#20a877';
+    else if (state.sessionKind !== 'preview' && (status === 'wrong' || status === 'missed')) noteColor = '#e7485b';
+    else if (isCurrent) noteColor = '#526ff3';
 
     context.save();
-    if (status === 'correct') context.fillStyle = '#20a877';
-    else if (status === 'wrong' || status === 'missed') context.fillStyle = '#e7485b';
-    else if (isCurrent) context.fillStyle = '#526ff3';
-    else context.fillStyle = '#232a33';
-
+    context.fillStyle = noteColor;
     context.translate(x, y);
     context.rotate(-0.28);
     context.beginPath();
@@ -584,7 +919,7 @@ function drawScore() {
     context.fill();
     context.restore();
 
-    context.strokeStyle = context.fillStyle;
+    context.strokeStyle = noteColor;
     context.lineWidth = 2;
     context.beginPath();
     context.moveTo(x + 8, y - 1);
@@ -607,13 +942,12 @@ function drawScore() {
 }
 
 function midiToStaffY(midi, staffTop, lineGap) {
-  const referenceMidi = 71; // B4, línea central aproximada.
+  const referenceMidi = 71;
   const semitoneOffset = midi - referenceMidi;
   return staffTop + lineGap * 2 - semitoneOffset * (lineGap / 4);
 }
 
 function yinPitch(buffer, sampleRate, threshold) {
-  // Limitamos el rango a aproximadamente A0-C8 para evitar trabajo innecesario.
   const minFrequency = 27;
   const maxFrequency = 4200;
   const minTau = Math.max(2, Math.floor(sampleRate / maxFrequency));
@@ -698,7 +1032,8 @@ function saveSettings() {
   localStorage.setItem('pianoCoachSettings', JSON.stringify({
     mode: state.mode,
     keyboardSize: state.keyboardSize,
-    showHints: state.showHints
+    showHints: state.showHints,
+    selectedPieceId: BUILT_IN_PIECES[state.selectedPieceId] ? state.selectedPieceId : 'demo'
   }));
 }
 
@@ -708,8 +1043,9 @@ function restoreSettings() {
     if (saved.mode === 'continuous' || saved.mode === 'wait') state.mode = saved.mode;
     if (KEYBOARD_RANGES[saved.keyboardSize]) state.keyboardSize = Number(saved.keyboardSize);
     if (typeof saved.showHints === 'boolean') state.showHints = saved.showHints;
+    if (BUILT_IN_PIECES[saved.selectedPieceId]) state.selectedPieceId = saved.selectedPieceId;
   } catch (_) {
-    // Preferimos valores por defecto si el almacenamiento está dañado.
+    // Se conservan los valores por defecto si el almacenamiento está dañado.
   }
 }
 
@@ -719,7 +1055,7 @@ function showToast(message) {
   const toast = fragment.querySelector('.toast');
   toast.textContent = message;
   document.body.appendChild(fragment);
-  window.setTimeout(() => toast.remove(), 3600);
+  window.setTimeout(() => toast.remove(), 4300);
 }
 
 function clamp(value, min, max) {

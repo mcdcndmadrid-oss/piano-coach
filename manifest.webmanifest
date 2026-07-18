@@ -1,19 +1,16 @@
 {
   "name": "Piano Coach MVP",
   "short_name": "Piano Coach",
-  "description": "Práctica de piano con partitura desplazable y reconocimiento monofónico por micrófono.",
+  "description": "Práctica de piano con partitura desplazable, previsualización y reconocimiento monofónico por micrófono.",
+  "id": "./",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "background_color": "#07101f",
   "theme_color": "#101828",
   "lang": "es",
-  "orientation": "portrait-primary",
-  "id": "./",
-  "scope": "./",
-  "categories": [
-    "education",
-    "music"
-  ],
+  "orientation": "landscape-primary",
   "icons": [
     {
       "src": "icons/icon-192.png",

@@ -4,32 +4,45 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#101828" />
-  <meta name="description" content="MVP móvil para practicar piano con partitura desplazable y reconocimiento de notas por micrófono." />
-  <title>Piano Coach MVP</title>
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="icons/icon-192.png" type="image/png" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="description" content="MVP para practicar piano con partitura desplazable, teclado completo y reconocimiento por micrófono." />
   <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="screen-orientation" content="landscape" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Piano Coach" />
+  <title>Piano Coach MVP</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <aside class="orientation-notice" aria-live="polite">
+    <strong>Gira el móvil</strong>
+    <span>Esta aplicación está diseñada para usarse en horizontal.</span>
+  </aside>
+
   <main class="app-shell">
-    <header class="topbar">
+    <header class="topbar setup-only">
       <div>
         <p class="eyebrow">Piano Coach</p>
-        <h1 id="pieceTitle">Oda a la alegría</h1>
-        <p id="pieceMeta" class="muted">L. van Beethoven · Demo monofónica</p>
+        <h1 id="pieceTitle">Cargando pieza…</h1>
+        <p id="pieceMeta" class="muted">MVP monofónico</p>
       </div>
       <button id="micButton" class="button button-primary" type="button">Activar micrófono</button>
     </header>
 
-    <section class="panel controls" aria-label="Controles de práctica">
+    <section class="panel controls setup-only" aria-label="Configuración de práctica">
+      <label class="control-group">
+        <span>Pieza</span>
+        <select id="pieceSelect" aria-label="Seleccionar pieza">
+          <option value="demo">Oda a la alegría</option>
+          <option value="twinkle">Estrellita</option>
+        </select>
+      </label>
+
       <div class="control-group compact-actions">
-        <button id="playButton" class="button" type="button">▶ Empezar</button>
-        <button id="resetButton" class="button button-ghost" type="button">↺ Reiniciar</button>
+        <button id="playButton" class="button" type="button">▶ Practicar</button>
+        <button id="previewButton" class="button" type="button">♪ Escuchar</button>
       </div>
 
       <label class="control-group">
@@ -49,8 +62,9 @@
         <span>Teclado</span>
         <select id="keyboardSizeSelect">
           <option value="25">25 teclas</option>
+          <option value="37" selected>37 teclas</option>
           <option value="49">49 teclas</option>
-          <option value="61" selected>61 teclas</option>
+          <option value="61">61 teclas</option>
           <option value="76">76 teclas</option>
           <option value="88">88 teclas</option>
         </select>
@@ -58,90 +72,87 @@
 
       <label class="switch-row">
         <input id="hintsToggle" type="checkbox" checked />
-        <span>Mostrar tecla esperada</span>
+        <span>Indicar tecla</span>
       </label>
 
       <label class="file-button">
         Añadir pieza JSON
         <input id="pieceFileInput" type="file" accept="application/json,.json" />
       </label>
+
+      <button id="resetButton" class="button button-ghost" type="button">↺ Reiniciar</button>
     </section>
 
-    <section class="panel score-panel" aria-label="Partitura">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Partitura</p>
-          <h2>Notas próximas</h2>
+    <section id="micHelp" class="panel mic-help setup-only" hidden aria-live="polite">
+      <div>
+        <strong id="micHelpTitle">No se pudo activar el micrófono</strong>
+        <p id="micHelpText"></p>
+      </div>
+      <button id="retryMicButton" class="button" type="button">Reintentar</button>
+    </section>
+
+    <section id="practiceStage" class="practice-stage" aria-label="Área de práctica">
+      <nav class="stage-bar" aria-label="Controles durante la pieza">
+        <button id="stagePauseButton" class="icon-button" type="button" aria-label="Pausar">Ⅱ</button>
+        <button id="stageStopButton" class="icon-button" type="button" aria-label="Salir">■</button>
+        <div class="stage-title">
+          <strong id="stagePieceTitle">Pieza</strong>
+          <span id="transportStatus">Preparado</span>
         </div>
-        <div id="transportStatus" class="status-pill">Preparado</div>
-      </div>
-      <canvas id="scoreCanvas" width="1400" height="300" aria-label="Partitura desplazable simplificada"></canvas>
-      <div class="legend">
-        <span><i class="dot dot-current"></i>Actual</span>
-        <span><i class="dot dot-correct"></i>Correcta</span>
-        <span><i class="dot dot-error"></i>Error</span>
-        <span><i class="dot dot-pending"></i>Pendiente</span>
-      </div>
-    </section>
-
-    <section class="feedback-grid" aria-label="Información de reconocimiento">
-      <article class="metric-card">
-        <span>Nota esperada</span>
-        <strong id="expectedNote">—</strong>
-      </article>
-      <article class="metric-card">
-        <span>Nota detectada</span>
-        <strong id="detectedNote">—</strong>
-      </article>
-      <article class="metric-card">
-        <span>Frecuencia</span>
-        <strong id="frequencyValue">—</strong>
-      </article>
-      <article class="metric-card">
-        <span>Confianza</span>
-        <strong id="confidenceValue">—</strong>
-      </article>
-      <article class="metric-card">
-        <span>Aciertos</span>
-        <strong id="correctValue">0</strong>
-      </article>
-      <article class="metric-card">
-        <span>Errores</span>
-        <strong id="errorValue">0</strong>
-      </article>
-    </section>
-
-    <section class="panel keyboard-panel" aria-label="Teclado de piano">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Teclado</p>
-          <h2>Referencia visual</h2>
+        <div class="stage-live">
+          <span>Esperada <strong id="stageExpectedNote">—</strong></span>
+          <span>Oída <strong id="stageDetectedNote">—</strong></span>
         </div>
-        <p id="microphoneHint" class="muted">Activa el micrófono y toca una nota.</p>
-      </div>
-      <div id="keyboardViewport" class="keyboard-viewport">
-        <div id="keyboard" class="keyboard"></div>
-      </div>
+        <div class="stage-progress"><div id="stageProgressBar"></div></div>
+      </nav>
+
+      <section class="panel score-panel" aria-label="Partitura">
+        <div class="section-heading setup-only">
+          <div>
+            <p class="eyebrow">Partitura</p>
+            <h2>Notas próximas</h2>
+          </div>
+          <div id="setupTransportStatus" class="status-pill">Preparado</div>
+        </div>
+        <canvas id="scoreCanvas" width="1400" height="300" aria-label="Partitura desplazable simplificada"></canvas>
+        <div class="legend setup-only">
+          <span><i class="dot dot-current"></i>Actual</span>
+          <span><i class="dot dot-correct"></i>Correcta</span>
+          <span><i class="dot dot-error"></i>Error</span>
+          <span><i class="dot dot-pending"></i>Pendiente</span>
+        </div>
+      </section>
+
+      <section class="panel keyboard-panel" aria-label="Teclado de piano">
+        <div class="section-heading setup-only">
+          <div>
+            <p class="eyebrow">Teclado</p>
+            <h2>Referencia visual</h2>
+          </div>
+          <p id="microphoneHint" class="muted">Activa el micrófono para validar notas.</p>
+        </div>
+        <div id="keyboardViewport" class="keyboard-viewport">
+          <div id="keyboard" class="keyboard"></div>
+        </div>
+      </section>
     </section>
 
-    <section class="panel session-panel">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Sesión</p>
-          <h2>Resultado provisional</h2>
-        </div>
-      </div>
-      <div class="progress-track" aria-label="Progreso de la pieza">
-        <div id="progressBar" class="progress-bar"></div>
-      </div>
+    <section class="feedback-grid setup-only" aria-label="Información de reconocimiento">
+      <article class="metric-card"><span>Nota esperada</span><strong id="expectedNote">—</strong></article>
+      <article class="metric-card"><span>Nota detectada</span><strong id="detectedNote">—</strong></article>
+      <article class="metric-card"><span>Frecuencia</span><strong id="frequencyValue">—</strong></article>
+      <article class="metric-card"><span>Confianza</span><strong id="confidenceValue">—</strong></article>
+      <article class="metric-card"><span>Aciertos</span><strong id="correctValue">0</strong></article>
+      <article class="metric-card"><span>Errores</span><strong id="errorValue">0</strong></article>
+    </section>
+
+    <section class="panel session-panel setup-only">
+      <div class="progress-track" aria-label="Progreso de la pieza"><div id="progressBar" class="progress-bar"></div></div>
       <p id="sessionSummary" class="session-summary">Todavía no hay resultados.</p>
     </section>
   </main>
 
-  <template id="toastTemplate">
-    <div class="toast" role="status"></div>
-  </template>
-
+  <template id="toastTemplate"><div class="toast" role="status"></div></template>
   <script src="app.js" defer></script>
 </body>
 </html>
