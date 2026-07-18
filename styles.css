@@ -168,21 +168,23 @@ body.session-active .key-label { bottom: 3px; }
   place-items: center;
   transform: translateX(-50%);
   border-radius: 50%;
-  color: #3f4248;
+  color: #fffdf8;
   font-size: clamp(.48rem, 1.15vw, .76rem);
   font-weight: 900;
   line-height: 1;
   letter-spacing: -.04em;
   text-transform: lowercase;
-  box-shadow: inset 0 1px 1px rgba(255,255,255,.42), 0 1px 2px rgba(0,0,0,.16);
+  text-shadow: 0 1px 2px rgba(50, 42, 42, .28);
+  box-shadow: inset 0 1px 2px rgba(255,255,255,.38), 0 1px 2px rgba(0,0,0,.16);
 }
-.note-do { background: #19b9ea; }
-.note-re { background: #ffd31a; }
-.note-mi { background: #f2634d; }
-.note-fa { background: #9a67cf; }
-.note-sol { background: #45b64b; }
-.note-la { background: #ed4a7b; }
-.note-si { background: #f5a623; }
+/* Colores muestreados de la fotografía de referencia: C, D, E, F, G, A, B. */
+.note-do { background: #bb8c94; }
+.note-re { background: #b59990; }
+.note-mi { background: #aeb097; }
+.note-fa { background: #6890ab; }
+.note-sol { background: #8aae9f; }
+.note-la { background: #aa8fab; }
+.note-si { background: #b5a2aa; }
 
 .keyboard-37 .piano-key.expected .note-marker,
 .keyboard-37 .piano-key.preview-current .note-marker {
