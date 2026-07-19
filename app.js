@@ -789,19 +789,19 @@ function playSynthNote(midi, durationSeconds) {
   const master = context.createGain();
   const filter = context.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(Math.min(4200, frequency * 7), now);
-  filter.Q.value = 0.6;
+  filter.frequency.setValueAtTime(Math.min(2600, frequency * 4), now);
+  filter.Q.value = 0.2;
   master.gain.setValueAtTime(0.0001, now);
-  master.gain.exponentialRampToValueAtTime(0.22, now + 0.012);
-  master.gain.exponentialRampToValueAtTime(0.095, now + 0.11);
+  master.gain.exponentialRampToValueAtTime(0.22, now + 0.02);
+  master.gain.exponentialRampToValueAtTime(0.09, now + 0.14);
   master.gain.exponentialRampToValueAtTime(0.0001, now + duration + 0.32);
   filter.connect(master);
   master.connect(context.destination);
 
   const harmonics = [
-    { ratio: 1, type: 'triangle', gain: 0.72 },
-    { ratio: 2, type: 'sine', gain: 0.20 },
-    { ratio: 3, type: 'sine', gain: 0.08 }
+    { ratio: 1, type: 'sine', detune: 0, gain: 0.75 },
+    { ratio: 1, type: 'triangle', detune: 4, gain: 0.28 },
+    { ratio: 2, type: 'sine', detune: -3, gain: 0.09 }
   ];
 
   harmonics.forEach((harmonic) => {
@@ -809,6 +809,7 @@ function playSynthNote(midi, durationSeconds) {
     const harmonicGain = context.createGain();
     oscillator.type = harmonic.type;
     oscillator.frequency.setValueAtTime(frequency * harmonic.ratio, now);
+    oscillator.detune.setValueAtTime(harmonic.detune, now);
     harmonicGain.gain.value = harmonic.gain;
     oscillator.connect(harmonicGain);
     harmonicGain.connect(filter);
