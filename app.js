@@ -1196,6 +1196,7 @@ function drawScore() {
   }
 
   const activeIndex = state.sessionKind === 'preview' ? getTemporalNoteIndex() : (state.mode === 'wait' ? state.currentIndex : getExpectedIndex());
+  const bottomLineY = staffTop + lineGap * 4;
   state.piece.notes.forEach((note, index) => {
     const x = playheadX + (note.startBeat - currentBeat) * pixelsPerBeat;
     if (x < -35 || x > width + 35) return;
@@ -1208,35 +1209,102 @@ function drawScore() {
     else if (state.sessionKind !== 'preview' && (status === 'wrong' || status === 'missed')) noteColor = '#e7485b';
     else if (isCurrent) noteColor = '#526ff3';
 
+    // Líneas adicionales para notas que caen fuera del pentagrama.
+    context.strokeStyle = noteColor;
+    context.lineWidth = 1;
+    if (y < staffTop - lineGap / 2) {
+      for (let ly = staffTop - lineGap; ly >= y - lineGap / 2; ly -= lineGap) {
+        context.beginPath();
+        context.moveTo(x - 12, ly);
+        context.lineTo(x + 12, ly);
+        context.stroke();
+      }
+    } else if (y > bottomLineY + lineGap / 2) {
+      for (let ly = bottomLineY + lineGap; ly <= y + lineGap / 2; ly += lineGap) {
+        context.beginPath();
+        context.moveTo(x - 12, ly);
+        context.lineTo(x + 12, ly);
+        context.stroke();
+      }
+    }
+
+    const glyph = getDurationGlyph(note.durationBeats);
+    const stemUp = note.midi < 71; // en/por debajo de la línea central: plica hacia arriba
+
     context.save();
-    context.fillStyle = noteColor;
     context.translate(x, y);
-    context.rotate(-0.28);
+    context.rotate(glyph.wide ? -0.08 : -0.22);
     context.beginPath();
-    context.ellipse(0, 0, 10, 7, 0, 0, Math.PI * 2);
-    context.fill();
+    context.ellipse(0, 0, glyph.wide ? 10 : 7, 5, 0, 0, Math.PI * 2);
+    if (glyph.hollow) {
+      context.fillStyle = '#f7f4ec';
+      context.fill();
+      context.lineWidth = 1.6;
+      context.strokeStyle = noteColor;
+      context.stroke();
+    } else {
+      context.fillStyle = noteColor;
+      context.fill();
+    }
     context.restore();
 
-    context.strokeStyle = noteColor;
-    context.lineWidth = 2;
-    context.beginPath();
-    context.moveTo(x + 8, y - 1);
-    context.lineTo(x + 8, y - 34);
-    context.stroke();
+    if (glyph.dot) {
+      context.beginPath();
+      context.fillStyle = noteColor;
+      context.arc(x + 14, y - 2, 1.8, 0, Math.PI * 2);
+      context.fill();
+    }
 
-    const durationWidth = Math.max(10, note.durationBeats * pixelsPerBeat * 0.55);
-    context.strokeStyle = 'rgba(35, 42, 51, 0.25)';
-    context.lineWidth = 4;
-    context.beginPath();
-    context.moveTo(x + 13, y + 16);
-    context.lineTo(x + durationWidth, y + 16);
-    context.stroke();
+    if (glyph.stem) {
+      const stemLength = 32;
+      const stemX = stemUp ? x + 7 : x - 7;
+      const stemDir = stemUp ? -1 : 1;
+      const stemEndY = y + stemDir * stemLength;
+
+      context.strokeStyle = noteColor;
+      context.lineWidth = 1.6;
+      context.beginPath();
+      context.moveTo(stemX, y);
+      context.lineTo(stemX, stemEndY);
+      context.stroke();
+
+      for (let f = 0; f < glyph.flags; f += 1) {
+        const flagStartY = stemEndY + stemDir * (f * 8);
+        context.beginPath();
+        context.moveTo(stemX, flagStartY);
+        context.quadraticCurveTo(
+          stemX + (stemUp ? 9 : -9),
+          flagStartY + stemDir * 6,
+          stemX,
+          flagStartY + stemDir * 14
+        );
+        context.stroke();
+      }
+    }
   });
 
   context.fillStyle = '#27303a';
   context.font = '700 14px system-ui';
   context.textAlign = 'left';
   context.fillText('Clave de sol · representación simplificada', 18, 24);
+}
+
+function getDurationGlyph(durationBeats) {
+  const d = Number(durationBeats) || 1;
+  const close = (a, b) => Math.abs(a - b) < 0.01;
+  // wide/hollow: redonda y blanca; hollow sin wide: blanca con plica.
+  if (d >= 4 || close(d, 4)) return { wide: true, hollow: true, stem: false, flags: 0, dot: false };
+  if (close(d, 3)) return { wide: false, hollow: true, stem: true, flags: 0, dot: true };
+  if (close(d, 2)) return { wide: false, hollow: true, stem: true, flags: 0, dot: false };
+  if (close(d, 1.5)) return { wide: false, hollow: false, stem: true, flags: 0, dot: true };
+  if (close(d, 1)) return { wide: false, hollow: false, stem: true, flags: 0, dot: false };
+  if (close(d, 0.75)) return { wide: false, hollow: false, stem: true, flags: 1, dot: true };
+  if (close(d, 0.5)) return { wide: false, hollow: false, stem: true, flags: 1, dot: false };
+  if (close(d, 0.375)) return { wide: false, hollow: false, stem: true, flags: 2, dot: true };
+  if (close(d, 0.25)) return { wide: false, hollow: false, stem: true, flags: 2, dot: false };
+  // Duraciones no estándar: aproxima por la nota llena más cercana.
+  if (d > 2) return { wide: false, hollow: true, stem: true, flags: 0, dot: false };
+  return { wide: false, hollow: false, stem: true, flags: d < 0.5 ? 1 : 0, dot: false };
 }
 
 function midiToStaffY(midi, staffTop, lineGap) {
