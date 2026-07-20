@@ -37,6 +37,9 @@
         <select id="pieceSelect" aria-label="Seleccionar pieza">
           <option value="demo">Oda a la alegría</option>
           <option value="twinkle">Estrellita</option>
+          <option value="frere-jacques">Frère Jacques</option>
+          <option value="cumpleanos-feliz">Cumpleaños feliz</option>
+          <option value="marcha-real">Marcha Real</option>
         </select>
       </label>
 
@@ -50,6 +53,13 @@
         <select id="modeSelect">
           <option value="continuous">Interpretación continua</option>
           <option value="wait">Esperar nota correcta</option>
+        </select>
+      </label>
+
+      <label class="control-group">
+        <span>Segmento</span>
+        <select id="segmentSelect">
+          <option value="all">Toda la pieza</option>
         </select>
       </label>
 
@@ -75,9 +85,19 @@
         <span>Indicar tecla</span>
       </label>
 
-      <label class="file-button" title="Importa una pieza JSON o convierte automáticamente una melodía MIDI">
-        Añadir JSON/MIDI
-        <input id="pieceFileInput" type="file" accept="application/json,.json,audio/midi,audio/x-midi,.mid,.midi" />
+      <label class="switch-row">
+        <input id="noteNamesToggle" type="checkbox" checked />
+        <span>Nombre de nota bajo cada nota</span>
+      </label>
+
+      <label class="switch-row">
+        <input id="simpleStaffToggle" type="checkbox" />
+        <span>Modo simple (un solo pentagrama)</span>
+      </label>
+
+      <label class="file-button" title="Importa una pieza JSON, MusicXML (.musicxml/.xml/.mxl), o convierte automáticamente una melodía MIDI">
+        Añadir JSON/MusicXML/MIDI
+        <input id="pieceFileInput" type="file" accept="application/json,.json,audio/midi,audio/x-midi,.mid,.midi,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml,.musicxml,.xml,.mxl" />
       </label>
 
       <button id="calibrateButton" class="button button-ghost" type="button">🎹 Calibrar</button>
@@ -172,6 +192,7 @@
 
   <template id="toastTemplate"><div class="toast" role="status"></div></template>
   <script src="midi-import.js" defer></script>
+  <script src="musicxml-import.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>
