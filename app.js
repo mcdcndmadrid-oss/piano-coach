@@ -1499,7 +1499,6 @@ function flashKey(midi, className) {
 
 function bindScoreDragEvents() {
   const canvas = els.scoreCanvas;
-  canvas.style.touchAction = 'none';
   canvas.addEventListener('pointerdown', onScorePointerDown);
   canvas.addEventListener('pointermove', onScorePointerMove);
   canvas.addEventListener('pointerup', onScorePointerEnd);
