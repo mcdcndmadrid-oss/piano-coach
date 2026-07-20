@@ -131,6 +131,10 @@ const state = {
   segments: [],
   selectedSegmentId: 'all',
   segment: null,
+  isDraggingScore: false,
+  dragStartClientX: 0,
+  dragStartBeat: 0,
+  lastPixelsPerBeat: 60,
   pitchOffset: 0,
   rawDetectedMidi: null,
   calibration: {
@@ -202,7 +206,7 @@ function cacheElements() {
     'hintsToggle', 'noteNamesToggle', 'simpleStaffToggle', 'pieceFileInput', 'micHelp', 'micHelpTitle', 'micHelpText',
     'retryMicButton', 'calibrationPanel', 'calibrationTitle', 'calibrationText',
     'calibrationStatus', 'calibrationProgressBar', 'cancelCalibrationButton',
-    'resetCalibrationButton', 'stagePauseButton', 'stageStopButton', 'stagePieceTitle',
+    'resetCalibrationButton', 'stagePauseButton', 'stageRestartButton', 'stageStopButton', 'stagePieceTitle',
     'transportStatus', 'setupTransportStatus', 'stageExpectedNote', 'stageDetectedNote',
     'stageProgressBar', 'scoreCanvas', 'expectedNote', 'detectedNote', 'frequencyValue',
     'confidenceValue', 'correctValue', 'errorValue', 'keyboardViewport', 'keyboard',
@@ -217,6 +221,7 @@ function bindEvents() {
   els.playButton.addEventListener('click', startPractice);
   els.previewButton.addEventListener('click', startPreview);
   els.stagePauseButton.addEventListener('click', toggleStagePause);
+  els.stageRestartButton.addEventListener('click', restartSession);
   els.stageStopButton.addEventListener('click', stopSession);
   els.resetButton.addEventListener('click', resetSession);
   els.calibrateButton.addEventListener('click', startCalibration);
@@ -264,6 +269,7 @@ function bindEvents() {
     saveSettings();
   });
   els.pieceFileInput.addEventListener('change', importPieceFile);
+  bindScoreDragEvents();
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && state.sessionKind && state.playing) toggleStagePause();
     if (!document.hidden && (state.sessionKind || state.calibration.active)) requestScreenWakeLock();
@@ -904,6 +910,19 @@ function prepareSession(kind) {
   });
 }
 
+function restartSession() {
+  if (!state.sessionKind) return;
+  const kind = state.sessionKind;
+  prepareSession(kind);
+  state.playing = true;
+  state.lastFrameAt = performance.now();
+  if (kind === 'preview') {
+    triggerPreviewNotes(state.currentSeconds - 0.01, state.currentSeconds + 0.01);
+  }
+  startLoop();
+  updateAllUI();
+}
+
 function toggleStagePause() {
   if (!state.sessionKind) return;
   state.playing = !state.playing;
@@ -1478,6 +1497,78 @@ function flashKey(midi, className) {
   window.setTimeout(() => key.classList.remove(className, 'active'), 260);
 }
 
+function bindScoreDragEvents() {
+  const canvas = els.scoreCanvas;
+  canvas.style.touchAction = 'none';
+  canvas.addEventListener('pointerdown', onScorePointerDown);
+  canvas.addEventListener('pointermove', onScorePointerMove);
+  canvas.addEventListener('pointerup', onScorePointerEnd);
+  canvas.addEventListener('pointercancel', onScorePointerEnd);
+}
+
+function onScorePointerDown(event) {
+  if (!state.piece || !state.sessionKind) return;
+  state.isDraggingScore = true;
+  state.dragStartClientX = event.clientX;
+  state.dragStartBeat = secondsToBeat(state.currentSeconds);
+  if (state.playing) {
+    state.playing = false;
+    stopSynthVoices();
+    updateTransportUI();
+  }
+  try { els.scoreCanvas.setPointerCapture(event.pointerId); } catch (_) { /* no soportado en todos los navegadores */ }
+}
+
+function onScorePointerMove(event) {
+  if (!state.isDraggingScore) return;
+  const deltaX = event.clientX - state.dragStartClientX;
+  const pixelsPerBeat = state.lastPixelsPerBeat || 60;
+  seekToBeat(state.dragStartBeat - deltaX / pixelsPerBeat);
+  drawScore();
+  updateDynamicUI();
+  updateProgressUI();
+}
+
+function onScorePointerEnd(event) {
+  if (!state.isDraggingScore) return;
+  state.isDraggingScore = false;
+  try { els.scoreCanvas.releasePointerCapture(event.pointerId); } catch (_) { /* no soportado en todos los navegadores */ }
+  state.lastFrameAt = performance.now();
+  updateTransportUI();
+}
+
+// Reposiciona la reproducción a un pulso concreto (arrastrar la partitura hacia
+// atrás/adelante). Las notas a partir de ese punto vuelven a 'pending' para poder
+// repetirlas, y en modo preview se liberan del registro de "ya sonadas".
+function seekToBeat(beat) {
+  if (!state.piece) return;
+  const minBeat = state.segment ? state.segment.startBeat : 0;
+  const maxBeat = state.segment ? state.segment.endBeat : secondsToBeat(getPieceDurationSeconds());
+  const clampedBeat = clamp(beat, minBeat, maxBeat);
+  state.currentSeconds = beatToSeconds(clampedBeat);
+
+  if (state.sessionKind === 'practice') {
+    state.piece.practiceNotes.forEach((note, index) => {
+      if (state.noteResults[index] === 'excluded') return;
+      if (note.startBeat >= clampedBeat - 0.001) state.noteResults[index] = 'pending';
+    });
+    if (state.mode === 'wait') {
+      const notes = state.piece.practiceNotes;
+      let nextIndex = notes.length - 1;
+      for (let index = 0; index < notes.length; index += 1) {
+        if (state.noteResults[index] === 'excluded') continue;
+        if (notes[index].startBeat >= clampedBeat - 0.001) { nextIndex = index; break; }
+      }
+      state.currentIndex = nextIndex;
+    }
+  } else if (state.sessionKind === 'preview') {
+    Array.from(state.previewPlayedIndexes).forEach((index) => {
+      const note = state.piece.allNotes[index];
+      if (note && note.startBeat >= clampedBeat - 0.001) state.previewPlayedIndexes.delete(index);
+    });
+  }
+}
+
 function resizeCanvas() {
   const rect = els.scoreCanvas.getBoundingClientRect();
   const scale = window.devicePixelRatio || 1;
@@ -1508,6 +1599,7 @@ function drawScore() {
   const playheadX = Math.min(width * 0.23, 210);
   // Una escala más compacta permite anticipar aproximadamente 15 pulsos en pantalla.
   const pixelsPerBeat = Math.max(36, width / 15.5);
+  state.lastPixelsPerBeat = pixelsPerBeat;
   const currentBeat = secondsToBeat(state.currentSeconds);
 
   context.strokeStyle = '#3d4651';
@@ -1852,7 +1944,29 @@ function showToast(message) {
   const toast = fragment.querySelector('.toast');
   toast.textContent = message;
   document.body.appendChild(fragment);
+  positionSessionToast(document.querySelector('.toast'));
   window.setTimeout(() => toast.remove(), 4300);
+}
+
+// Durante una sesión, el teclado y la partitura ocupan toda la pantalla: el aviso se
+// coloca justo debajo de la barra de transporte (nunca sobre el teclado ni la
+// partitura), calculado en píxeles reales para que funcione en cualquier tamaño de
+// pantalla sin duplicar puntos de ruptura en el CSS.
+function positionSessionToast(toast) {
+  if (!toast || !document.body.classList.contains('session-active')) return;
+  const stageBar = document.querySelector('.stage-bar');
+  if (!stageBar || !els.scoreCanvas) return;
+  const barRect = stageBar.getBoundingClientRect();
+  const canvasRect = els.scoreCanvas.getBoundingClientRect();
+  // Se ancla al borde superior de la barra de transporte (no a su borde inferior):
+  // así el aviso dispone de todo el hueco hasta la partitura como presupuesto de
+  // altura, en vez de depender del margen entre la barra y la partitura, que puede
+  // ser más estrecho que el propio relleno/borde del aviso en pantallas muy bajas.
+  const availableHeight = Math.max(0, canvasRect.top - barRect.top - 2);
+  toast.classList.add('toast-compact');
+  toast.style.top = `${Math.round(barRect.top)}px`;
+  toast.style.maxHeight = `${Math.round(availableHeight)}px`;
+  toast.style.overflow = 'hidden';
 }
 
 function clamp(value, min, max) {
