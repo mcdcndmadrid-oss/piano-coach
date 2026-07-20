@@ -178,24 +178,41 @@ const els = {};
 window.addEventListener('DOMContentLoaded', init);
 
 async function init() {
-  cacheElements();
-  bindEvents();
-  restoreSettings();
-  await loadBuiltInPiece(state.selectedPieceId, false);
-  renderKeyboard();
-  resizeCanvas();
-  updateAllUI();
-  updateOrientationState();
-
-  window.addEventListener('resize', () => {
-    resizeCanvas();
+  try {
+    cacheElements();
+    bindEvents();
+    restoreSettings();
+    await loadBuiltInPiece(state.selectedPieceId, false);
     renderKeyboard();
+    resizeCanvas();
+    updateAllUI();
     updateOrientationState();
-  });
-  window.addEventListener('orientationchange', () => window.setTimeout(updateOrientationState, 150));
 
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('./sw.js').catch(() => undefined);
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      renderKeyboard();
+      updateOrientationState();
+    });
+    window.addEventListener('orientationchange', () => window.setTimeout(updateOrientationState, 150));
+
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      navigator.serviceWorker.register('./sw.js').catch(() => undefined);
+    }
+  } catch (error) {
+    reportStartupFailure(error);
+  }
+}
+
+// Si init() falla (p. ej. una versión en caché de index.html no coincide con la de
+// app.js tras una actualización), se muestra el error en vez de dejar la pantalla
+// congelada en "Cargando pieza…" sin explicación.
+function reportStartupFailure(error) {
+  console.error('Piano Coach no pudo iniciar:', error);
+  const titleEl = document.getElementById('pieceTitle');
+  const metaEl = document.getElementById('pieceMeta');
+  if (titleEl) titleEl.textContent = 'No se pudo iniciar la app';
+  if (metaEl) {
+    metaEl.textContent = `${error?.message || error}. Prueba a recargar forzando la caché (recarga con el navegador cerrado y abierto de nuevo, o borra datos del sitio) y vuelve a intentarlo.`;
   }
 }
 
