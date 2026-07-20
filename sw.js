@@ -1,16 +1,20 @@
-const CACHE_NAME = 'piano-coach-mvp-v11';
+const CACHE_NAME = 'piano-coach-mvp-v14';
 const APP_ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
   './midi-import.js',
+  './musicxml-import.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
   './pieces/demo.json',
-  './pieces/twinkle.json'
+  './pieces/twinkle.json',
+  './pieces/frere-jacques.json',
+  './pieces/cumpleanos-feliz.json',
+  './pieces/marcha-real.mxl'
 ];
 
 self.addEventListener('install', (event) => {
@@ -34,7 +38,7 @@ self.addEventListener('fetch', (event) => {
 
   const requestUrl = new URL(event.request.url);
   const isFreshAsset = requestUrl.origin === self.location.origin
-    && (requestUrl.pathname.endsWith('/styles.css') || requestUrl.pathname.endsWith('/app.js') || requestUrl.pathname.endsWith('/midi-import.js'));
+    && (requestUrl.pathname.endsWith('/styles.css') || requestUrl.pathname.endsWith('/app.js') || requestUrl.pathname.endsWith('/midi-import.js') || requestUrl.pathname.endsWith('/musicxml-import.js'));
 
   // El CSS y el JavaScript usan "network first": cuando hay conexión se
   // descarga siempre la versión más reciente y se actualiza la copia offline.
