@@ -31,78 +31,21 @@
       <button id="micButton" class="button button-primary" type="button">Activar micrófono</button>
     </header>
 
-    <section class="panel controls setup-only" aria-label="Configuración de práctica">
-      <label class="control-group">
-        <span>Pieza</span>
-        <select id="pieceSelect" aria-label="Seleccionar pieza">
-          <option value="demo">Oda a la alegría</option>
-          <option value="twinkle">Estrellita</option>
-          <option value="frere-jacques">Frère Jacques</option>
-          <option value="cumpleanos-feliz">Cumpleaños feliz</option>
-          <option value="marcha-real">Marcha Real</option>
-        </select>
-      </label>
-
-      <div class="control-group compact-actions">
-        <button id="playButton" class="button" type="button">▶ Practicar</button>
-        <button id="previewButton" class="button" type="button">♪ Escuchar</button>
-      </div>
-
-      <label class="control-group">
-        <span>Modo</span>
-        <select id="modeSelect">
-          <option value="continuous">Interpretación continua</option>
-          <option value="wait">Esperar nota correcta</option>
-        </select>
-      </label>
-
-      <label class="control-group">
-        <span>Segmento</span>
-        <select id="segmentSelect">
-          <option value="all">Toda la pieza</option>
-        </select>
-      </label>
-
-      <label class="control-group range-control">
-        <span>Tempo: <strong id="tempoValue">92</strong> BPM</span>
-        <input id="tempoInput" type="range" min="40" max="180" value="92" step="1" />
-      </label>
-
-      <label class="control-group">
-        <span>Teclado</span>
-        <select id="keyboardSizeSelect">
-          <option value="25">25 teclas</option>
-          <option value="37" selected>37 teclas</option>
-          <option value="49">49 teclas</option>
-          <option value="61">61 teclas</option>
-          <option value="76">76 teclas</option>
-          <option value="88">88 teclas</option>
-        </select>
-      </label>
-
-      <label class="switch-row">
-        <input id="hintsToggle" type="checkbox" checked />
-        <span>Indicar tecla</span>
-      </label>
-
-      <label class="switch-row">
-        <input id="noteNamesToggle" type="checkbox" checked />
-        <span>Nombre de nota bajo cada nota</span>
-      </label>
-
-      <label class="switch-row">
-        <input id="simpleStaffToggle" type="checkbox" />
-        <span>Modo simple (un solo pentagrama)</span>
-      </label>
-
-      <label class="file-button" title="Importa una pieza JSON, MusicXML (.musicxml/.xml/.mxl), o convierte automáticamente una melodía MIDI">
-        Añadir JSON/MusicXML/MIDI
-        <input id="pieceFileInput" type="file" accept="application/json,.json,audio/midi,audio/x-midi,.mid,.midi,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml,.musicxml,.xml,.mxl" />
-      </label>
-
-      <button id="calibrateButton" class="button button-ghost" type="button">🎹 Calibrar</button>
-      <button id="resetButton" class="button button-ghost" type="button">↺ Reiniciar</button>
+    <section class="panel home-actions setup-only" aria-label="Empezar">
+      <button id="playButton" class="button button-primary" type="button">▶ Practicar</button>
+      <button id="previewButton" class="button" type="button">♪ Escuchar</button>
     </section>
+
+    <nav class="home-nav setup-only" aria-label="Más opciones">
+      <button id="openPiecesButton" class="nav-card" type="button">
+        <strong>🎵 Piezas</strong>
+        <span>Elegir o importar una pieza</span>
+      </button>
+      <button id="openSettingsButton" class="nav-card" type="button">
+        <strong>⚙ Ajustes</strong>
+        <span>Modo, tempo, teclado y calibración</span>
+      </button>
+    </nav>
 
     <section id="micHelp" class="panel mic-help setup-only" hidden aria-live="polite">
       <div>
@@ -111,7 +54,6 @@
       </div>
       <button id="retryMicButton" class="button" type="button">Reintentar</button>
     </section>
-
 
     <section id="calibrationPanel" class="panel calibration-panel setup-only" hidden aria-live="polite">
       <div class="calibration-copy">
@@ -129,21 +71,101 @@
       </div>
     </section>
 
+    <section id="piecesPage" class="page setup-only" hidden aria-label="Piezas">
+      <header class="page-header">
+        <button id="piecesBackButton" class="back-button" type="button">← Inicio</button>
+        <h2>Piezas</h2>
+      </header>
+      <div class="page-body">
+        <label class="control-group">
+          <span>Pieza</span>
+          <select id="pieceSelect" aria-label="Seleccionar pieza">
+            <option value="demo">Oda a la alegría</option>
+            <option value="twinkle">Estrellita</option>
+            <option value="frere-jacques">Frère Jacques</option>
+            <option value="cumpleanos-feliz">Cumpleaños feliz</option>
+            <option value="marcha-real">Marcha Real</option>
+          </select>
+        </label>
+
+        <label class="file-button" title="Importa una pieza JSON, MusicXML (.musicxml/.xml/.mxl), o convierte automáticamente una melodía MIDI">
+          Añadir JSON/MusicXML/MIDI
+          <input id="pieceFileInput" type="file" accept="application/json,.json,audio/midi,audio/x-midi,.mid,.midi,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml,.musicxml,.xml,.mxl" />
+        </label>
+      </div>
+    </section>
+
+    <section id="settingsPage" class="page setup-only" hidden aria-label="Ajustes">
+      <header class="page-header">
+        <button id="settingsBackButton" class="back-button" type="button">← Inicio</button>
+        <h2>Ajustes</h2>
+      </header>
+      <div class="page-body settings-grid">
+        <label class="control-group">
+          <span>Modo</span>
+          <select id="modeSelect">
+            <option value="continuous">Interpretación continua</option>
+            <option value="wait">Esperar nota correcta</option>
+          </select>
+        </label>
+
+        <label class="control-group">
+          <span>Segmento</span>
+          <select id="segmentSelect">
+            <option value="all">Toda la pieza</option>
+          </select>
+        </label>
+
+        <label class="control-group range-control">
+          <span>Tempo: <strong id="tempoValue">92</strong> BPM</span>
+          <input id="tempoInput" type="range" min="40" max="180" value="92" step="1" />
+        </label>
+
+        <label class="control-group">
+          <span>Teclado</span>
+          <select id="keyboardSizeSelect">
+            <option value="25">25 teclas</option>
+            <option value="37" selected>37 teclas</option>
+            <option value="49">49 teclas</option>
+            <option value="61">61 teclas</option>
+            <option value="76">76 teclas</option>
+            <option value="88">88 teclas</option>
+          </select>
+        </label>
+
+        <label class="switch-row">
+          <input id="hintsToggle" type="checkbox" checked />
+          <span>Indicar tecla</span>
+        </label>
+
+        <label class="switch-row">
+          <input id="noteNamesToggle" type="checkbox" checked />
+          <span>Nombre de nota bajo cada nota</span>
+        </label>
+
+        <label class="switch-row">
+          <input id="simpleStaffToggle" type="checkbox" />
+          <span>Modo simple (un solo pentagrama)</span>
+        </label>
+
+        <button id="calibrateButton" class="button button-ghost" type="button">🎹 Calibrar</button>
+        <button id="resetButton" class="button button-ghost" type="button">↺ Reiniciar</button>
+      </div>
+    </section>
+
     <section id="practiceStage" class="practice-stage" aria-label="Área de práctica">
-      <nav class="stage-bar" aria-label="Controles durante la pieza">
+      <div class="stage-progress-line"><div id="stageProgressBar"></div></div>
+      <div class="stage-controls">
         <button id="stagePauseButton" class="icon-button" type="button" aria-label="Pausar">Ⅱ</button>
         <button id="stageRestartButton" class="icon-button" type="button" aria-label="Reiniciar">↺</button>
         <button id="stageStopButton" class="icon-button" type="button" aria-label="Salir">■</button>
-        <div class="stage-title">
-          <strong id="stagePieceTitle">Pieza</strong>
-          <span id="transportStatus">Preparado</span>
-        </div>
-        <div class="stage-live">
-          <span>Esperada <strong id="stageExpectedNote">—</strong></span>
-          <span>Oída <strong id="stageDetectedNote">—</strong></span>
-        </div>
-        <div class="stage-progress"><div id="stageProgressBar"></div></div>
-      </nav>
+      </div>
+      <div class="stage-live-badge">
+        <span>Esperada <strong id="stageExpectedNote">—</strong></span>
+        <span>Oída <strong id="stageDetectedNote">—</strong></span>
+      </div>
+      <strong id="stagePieceTitle" class="sr-only">Pieza</strong>
+      <span id="transportStatus" class="sr-only">Preparado</span>
 
       <section class="panel score-panel" aria-label="Partitura">
         <div class="section-heading setup-only">

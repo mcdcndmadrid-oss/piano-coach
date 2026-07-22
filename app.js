@@ -227,7 +227,9 @@ function cacheElements() {
     'transportStatus', 'setupTransportStatus', 'stageExpectedNote', 'stageDetectedNote',
     'stageProgressBar', 'scoreCanvas', 'expectedNote', 'detectedNote', 'frequencyValue',
     'confidenceValue', 'correctValue', 'errorValue', 'keyboardViewport', 'keyboard',
-    'microphoneHint', 'progressBar', 'sessionSummary', 'toastTemplate'
+    'microphoneHint', 'progressBar', 'sessionSummary', 'toastTemplate',
+    'openPiecesButton', 'openSettingsButton', 'piecesPage', 'piecesBackButton',
+    'settingsPage', 'settingsBackButton'
   ];
   ids.forEach((id) => { els[id] = document.getElementById(id); });
 }
@@ -286,12 +288,24 @@ function bindEvents() {
     saveSettings();
   });
   els.pieceFileInput.addEventListener('change', importPieceFile);
+  els.openPiecesButton.addEventListener('click', () => showScreen('pieces'));
+  els.openSettingsButton.addEventListener('click', () => showScreen('settings'));
+  els.piecesBackButton.addEventListener('click', () => showScreen('home'));
+  els.settingsBackButton.addEventListener('click', () => showScreen('home'));
   bindScoreDragEvents();
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && state.sessionKind && state.playing) toggleStagePause();
     if (!document.hidden && (state.sessionKind || state.calibration.active)) requestScreenWakeLock();
   });
   window.addEventListener('pagehide', releaseScreenWakeLock);
+}
+
+// El inicio, "Piezas" y "Ajustes" son tres pantallas del mismo tamaño de la
+// pantalla de configuración; solo una está visible a la vez (la práctica en
+// pantalla completa es un estado aparte, gestionado por body.session-active).
+function showScreen(name) {
+  els.piecesPage.hidden = name !== 'pieces';
+  els.settingsPage.hidden = name !== 'settings';
 }
 
 async function loadBuiltInPiece(id, announce) {
@@ -704,6 +718,7 @@ function hideMicHelp() {
 
 async function startCalibration() {
   if (state.sessionKind) stopSession();
+  showScreen('home');
 
   if (!state.micReady) {
     await enableMicrophone();
@@ -1033,6 +1048,16 @@ async function enterLandscapeMode() {
   } catch (_) {
     // El bloqueo solo está disponible en algunos navegadores/PWA; la interfaz ya avisa en vertical.
   }
+  try {
+    // En Android/Chrome esto también oculta la barra de estado del sistema. En
+    // iPhone, Safari no permite pantalla completa desde una pestaña normal; solo
+    // funciona si la app está añadida a la pantalla de inicio (limitación de iOS).
+    if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+    }
+  } catch (_) {
+    // Pantalla completa no disponible o rechazada; la práctica sigue funcionando igual.
+  }
 }
 
 function exitFullscreenIfNeeded() {
@@ -1040,6 +1065,11 @@ function exitFullscreenIfNeeded() {
     if (screen.orientation?.unlock) screen.orientation.unlock();
   } catch (_) {
     // No todos los navegadores exponen unlock.
+  }
+  try {
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => undefined);
+  } catch (_) {
+    // Puede haberse salido ya de pantalla completa por otro medio (Esc, gesto del sistema).
   }
 }
 
@@ -1964,24 +1994,14 @@ function showToast(message) {
   window.setTimeout(() => toast.remove(), 4300);
 }
 
-// Durante una sesión, el teclado y la partitura ocupan toda la pantalla: el aviso se
-// coloca justo debajo de la barra de transporte (nunca sobre el teclado ni la
-// partitura), calculado en píxeles reales para que funcione en cualquier tamaño de
-// pantalla sin duplicar puntos de ruptura en el CSS.
+// Durante una sesión, la partitura y el teclado ocupan casi toda la pantalla y los
+// controles flotan encima de la propia partitura (sin franja reservada). El aviso
+// sigue la misma idea: flota sobre el borde superior, compacto y con una altura
+// máxima acotada para no invadir demasiado la partitura.
 function positionSessionToast(toast) {
   if (!toast || !document.body.classList.contains('session-active')) return;
-  const stageBar = document.querySelector('.stage-bar');
-  if (!stageBar || !els.scoreCanvas) return;
-  const barRect = stageBar.getBoundingClientRect();
-  const canvasRect = els.scoreCanvas.getBoundingClientRect();
-  // Se ancla al borde superior de la barra de transporte (no a su borde inferior):
-  // así el aviso dispone de todo el hueco hasta la partitura como presupuesto de
-  // altura, en vez de depender del margen entre la barra y la partitura, que puede
-  // ser más estrecho que el propio relleno/borde del aviso en pantallas muy bajas.
-  const availableHeight = Math.max(0, canvasRect.top - barRect.top - 2);
   toast.classList.add('toast-compact');
-  toast.style.top = `${Math.round(barRect.top)}px`;
-  toast.style.maxHeight = `${Math.round(availableHeight)}px`;
+  toast.style.maxHeight = `${Math.round(window.innerHeight * 0.22)}px`;
   toast.style.overflow = 'hidden';
 }
 
