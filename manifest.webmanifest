@@ -2,7 +2,7 @@
   "name": "Piano Coach MVP",
   "short_name": "Piano Coach",
   "description": "Práctica de piano con partitura desplazable, previsualización y reconocimiento monofónico por micrófono.",
-  "id": "./",
+  "id": "piano-coach",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
